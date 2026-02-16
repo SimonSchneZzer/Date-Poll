@@ -2,6 +2,7 @@
 
 import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
+import { useEffect, useState } from "react"
 import type { DateRange } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,18 @@ export function DateRangePicker({
   numberOfMonths = 2,
   placeholder = "Pick a date range",
 }: DateRangePickerProps) {
+  const [isSmallViewport, setIsSmallViewport] = useState(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 640px)")
+    const updateViewportSize = () => setIsSmallViewport(mediaQuery.matches)
+
+    updateViewportSize()
+    mediaQuery.addEventListener("change", updateViewportSize)
+
+    return () => mediaQuery.removeEventListener("change", updateViewportSize)
+  }, [])
+
   const disabledOutsideRange =
     fromDate || toDate
       ? [
@@ -35,6 +48,8 @@ export function DateRangePicker({
           ...(toDate ? [{ after: toDate }] : []),
         ]
       : undefined
+
+  const visibleMonths = isSmallViewport ? 1 : numberOfMonths
 
   return (
     <Popover>
@@ -60,13 +75,17 @@ export function DateRangePicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent
+        align={isSmallViewport ? "center" : "start"}
+        collisionPadding={8}
+        className="w-auto max-h-[calc(100svh-2rem)] max-w-[calc(100vw-1rem)] overflow-auto p-0"
+      >
         <Calendar
           mode="range"
           selected={value}
           onSelect={onChange}
           defaultMonth={defaultMonth ?? fromDate}
-          numberOfMonths={numberOfMonths}
+          numberOfMonths={visibleMonths}
           fromDate={fromDate}
           toDate={toDate}
           fromMonth={fromDate}
