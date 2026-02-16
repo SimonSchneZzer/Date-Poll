@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VoteStatus {
+  CAN
+  MAYBE
+  CANT
+}
+
+model Poll {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  timezone    String        @default("Europe/Vienna")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  options     PollOption[]
+  participants Participant[]
+}
+
+model PollOption {
+  id        String   @id @default(cuid())
+  pollId    String
+  value     DateTime
+  position  Int
+  poll      Poll     @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes     Vote[]
+
+  @@index([pollId])
+  @@unique([pollId, position])
+}
+
+model Participant {
+  id             String   @id @default(cuid())
+  pollId         String
+  fullName       String
+  normalizedName String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  poll           Poll     @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes          Vote[]
+
+  @@index([pollId])
+  @@unique([pollId, normalizedName])
+}
+
+model Vote {
+  id            String      @id @default(cuid())
+  pollOptionId  String
+  participantId String
+  status        VoteStatus
+  pollOption    PollOption  @relation(fields: [pollOptionId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([pollOptionId, participantId])
+  @@index([participantId])
+}
