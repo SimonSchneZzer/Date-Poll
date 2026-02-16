@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ polls: [] }, { status: 401 })
   }
 
-  return NextResponse.json({ polls: getPollSummariesForUser(user.id) })
+  const polls = await getPollSummariesForUser(user.id)
+  return NextResponse.json({ polls })
 }
 
 export async function DELETE(request: NextRequest) {
@@ -27,10 +28,11 @@ export async function DELETE(request: NextRequest) {
   const pollId = new URL(request.url).searchParams.get("pollId")?.trim()
 
   if (pollId) {
-    leavePollForUser({ pollId, userId: user.id })
+    await leavePollForUser({ pollId, userId: user.id })
   } else {
-    leaveAllPollsForUser(user.id)
+    await leaveAllPollsForUser(user.id)
   }
 
-  return NextResponse.json({ polls: getPollSummariesForUser(user.id) })
+  const polls = await getPollSummariesForUser(user.id)
+  return NextResponse.json({ polls })
 }

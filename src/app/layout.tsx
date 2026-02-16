@@ -29,7 +29,7 @@ export default async function RootLayout({
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
   const initialAccountPolls = currentUser
-    ? getPollSummariesForUser(currentUser.id)
+    ? await getPollSummariesForUser(currentUser.id)
     : []
 
   return (

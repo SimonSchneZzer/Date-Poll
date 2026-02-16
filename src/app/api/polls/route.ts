@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     ? payload.options.filter((option): option is string => typeof option === "string")
     : parseOptionsInput(payload.optionsText ?? "")
 
-  const result = createPoll({
+  const result = await createPoll({
     title: payload.title ?? "",
     description: payload.description,
     timezone: payload.timezone ?? "Europe/Vienna",

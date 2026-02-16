@@ -8,7 +8,7 @@ export default async function Home() {
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
   const initialAccountPolls = currentUser
-    ? getPollSummariesForUser(currentUser.id)
+    ? await getPollSummariesForUser(currentUser.id)
     : []
 
   return (

@@ -3,13 +3,15 @@ import { notFound } from "next/navigation"
 import { PollResultsView } from "@/components/date-poll/PollResultsView"
 import { getPoll } from "@/lib/date-poll/store"
 
+export const dynamic = "force-dynamic"
+
 export default async function PollResultsPage({
   params,
 }: {
   params: Promise<{ pollId: string }>
 }) {
   const { pollId } = await params
-  const poll = getPoll(pollId)
+  const poll = await getPoll(pollId)
 
   if (!poll) {
     notFound()

@@ -15,7 +15,7 @@ export async function POST(
     votes?: Record<string, unknown>
   }
 
-  const result = upsertParticipantVotes({
+  const result = await upsertParticipantVotes({
     pollId,
     fullName: payload.fullName ?? "",
     authUserId: user?.id,
