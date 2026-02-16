@@ -1,9 +1,9 @@
 "use client"
 
 import { eachDayOfInterval, formatISO, startOfDay } from "date-fns"
-import Link from "next/link"
+import { ArrowRight, Check, Copy, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { DateRange } from "react-day-picker"
 
 import { DateRangePicker } from "@/components/date-poll/DateRangePicker"
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath } from "@/lib/auth/supabase-auth"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 
@@ -27,6 +28,7 @@ export function CreatePollForm() {
   const [dateRange, setDateRange] = useState<DateRange>()
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<CreateResult | null>(null)
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
   const [isLoading, setIsLoading] = useState(false)
 
   const options = useMemo(() => {
@@ -49,6 +51,24 @@ export function CreatePollForm() {
     if (typeof window === "undefined") return result.path
     return `${window.location.origin}${result.path}`
   }, [result])
+
+  useEffect(() => {
+    if (copyState === "idle") return
+
+    const timeout = window.setTimeout(() => setCopyState("idle"), 1800)
+    return () => window.clearTimeout(timeout)
+  }, [copyState])
+
+  async function copyShareUrl() {
+    if (!shareUrl) return
+
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopyState("copied")
+    } catch {
+      setCopyState("failed")
+    }
+  }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -161,18 +181,62 @@ export function CreatePollForm() {
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Creating..." : "Create poll"}
-          </Button>
+          {!result ? (
+            <Button type="submit" disabled={isLoading}>
+              <Plus className="size-4" />
+              {isLoading ? "Creating..." : "Create poll"}
+            </Button>
+          ) : null}
         </form>
 
         {result ? (
-          <div className="mt-6 space-y-2 rounded-lg border p-4">
-            <p className="text-sm font-medium">Shareable URL</p>
-            <Input readOnly value={shareUrl} />
-            <Link className="text-sm underline" href={result.path}>
-              Open poll
-            </Link>
+          <div className="mt-6 rounded-lg border p-4">
+            <p className="mb-3 text-sm font-medium">Share</p>
+            <TooltipProvider>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Input readOnly value={shareUrl} className="text-xs" aria-label="Share link" />
+                <div className="flex gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Go to poll"
+                        onClick={() => router.push(result.path)}
+                      >
+                        <ArrowRight className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Open the poll page</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="outline"
+                        aria-label="Copy link"
+                        onClick={copyShareUrl}
+                      >
+                        {copyState === "copied" ? (
+                          <Check className="size-4" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {copyState === "copied"
+                        ? "Link copied"
+                        : copyState === "failed"
+                          ? "Could not copy link"
+                          : "Copy share link"}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            </TooltipProvider>
           </div>
         ) : null}
       </CardContent>

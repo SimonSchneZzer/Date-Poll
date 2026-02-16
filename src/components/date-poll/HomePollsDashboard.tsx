@@ -1,5 +1,6 @@
 "use client"
 
+import { Link2, Plus, Trash2, UserPlus, UserRound, X } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
@@ -17,10 +18,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
-import type { AccountPollSummary } from "@/lib/date-poll/account-polls"
+import {
+  mergeAccountAndTrackedPolls,
+  type AccountPollSummary,
+} from "@/lib/date-poll/account-polls"
 import {
   getTrackedPollsServerSnapshot,
   getTrackedPollsSnapshot,
+  removeTrackedPoll,
   subscribeTrackedPolls,
 } from "@/lib/date-poll/tracked-polls"
 
@@ -88,11 +93,15 @@ function PollListSection({
   description,
   polls,
   emptyLabel,
+  isMutatingPolls,
+  onRemovePoll,
 }: {
   title: string
   description: string
   polls: DashboardPoll[]
   emptyLabel: string
+  isMutatingPolls: boolean
+  onRemovePoll: (poll: DashboardPoll) => void
 }) {
   return (
     <Card>
@@ -107,21 +116,36 @@ function PollListSection({
           </div>
         ) : (
           polls.map((poll) => (
-            <Link
-              key={poll.id}
-              href={poll.path}
-              className="hover:bg-accent/50 flex items-center justify-between rounded-md border px-3 py-2 transition-colors"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{poll.title}</p>
-                <p className="text-muted-foreground text-xs">
-                  Last activity: {formatLastSeen(poll.lastInteractionAt)}
-                </p>
-              </div>
-              <Badge variant="outline">
-                {poll.role === "organizer" ? "Created" : "Joined"}
-              </Badge>
-            </Link>
+            <div key={poll.id} className="group flex items-center gap-2">
+              <Link
+                href={poll.path}
+                className="hover:bg-accent/50 flex min-w-0 flex-1 items-center justify-between rounded-md border px-3 py-2 transition-colors"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{poll.title}</p>
+                  <p className="text-muted-foreground text-xs">
+                    Last activity: {formatLastSeen(poll.lastInteractionAt)}
+                  </p>
+                </div>
+                <Badge variant="outline">
+                  {poll.role === "organizer" ? "Created" : "Joined"}
+                </Badge>
+              </Link>
+              <Button
+                type="button"
+                size="icon-xs"
+                variant={poll.role === "organizer" ? "destructive" : "ghost"}
+                aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
+                disabled={isMutatingPolls}
+                onClick={() => onRemovePoll(poll)}
+              >
+                {poll.role === "organizer" ? (
+                  <Trash2 className="size-3.5" />
+                ) : (
+                  <X className="size-3.5" />
+                )}
+              </Button>
+            </div>
           ))
         )}
       </CardContent>
@@ -146,6 +170,7 @@ export function HomePollsDashboard({
   const [joinInput, setJoinInput] = useState("")
   const [joinError, setJoinError] = useState<string | null>(null)
   const [pendingGuestJoinPath, setPendingGuestJoinPath] = useState<string | null>(null)
+  const [isMutatingPolls, setIsMutatingPolls] = useState(false)
   const createPollHref = initialUser
     ? getCreatePollPath()
     : `/login?next=${encodeURIComponent(normalizeNextPath(getCreatePollPath()))}`
@@ -187,9 +212,18 @@ export function HomePollsDashboard({
     }
   }, [initialUser])
 
+  const mergedPolls = useMemo(() => {
+    if (!initialUser) return []
+
+    return mergeAccountAndTrackedPolls({
+      accountPolls,
+      trackedPolls,
+    })
+  }, [accountPolls, initialUser, trackedPolls])
+
   const createdPolls = useMemo<DashboardPoll[]>(() => {
     if (initialUser) {
-      return accountPolls
+      return mergedPolls
         .filter((poll) => poll.role === "organizer")
         .map(toDashboardPoll)
         .sort(sortDashboardPolls)
@@ -205,11 +239,11 @@ export function HomePollsDashboard({
         lastInteractionAt: poll.lastInteractionAt,
       }))
       .sort(sortDashboardPolls)
-  }, [accountPolls, initialUser, trackedPolls])
+  }, [initialUser, mergedPolls, trackedPolls])
 
   const joinedPolls = useMemo<DashboardPoll[]>(() => {
     if (initialUser) {
-      return accountPolls
+      return mergedPolls
         .filter((poll) => poll.role === "participant")
         .map(toDashboardPoll)
         .sort(sortDashboardPolls)
@@ -225,7 +259,7 @@ export function HomePollsDashboard({
         lastInteractionAt: poll.lastInteractionAt,
       }))
       .sort(sortDashboardPolls)
-  }, [accountPolls, initialUser, trackedPolls])
+  }, [initialUser, mergedPolls, trackedPolls])
 
   const hasAnyPoll = createdPolls.length > 0 || joinedPolls.length > 0
 
@@ -253,6 +287,51 @@ export function HomePollsDashboard({
     setPendingGuestJoinPath(null)
   }
 
+  async function removePoll(poll: DashboardPoll) {
+    if (isMutatingPolls) return
+
+    const isOrganizer = poll.role === "organizer"
+    const confirmed = window.confirm(
+      isOrganizer
+        ? `Delete "${poll.title}" for everyone?`
+        : `Leave "${poll.title}"? You can join again with the link later.`
+    )
+
+    if (!confirmed) return
+
+    setIsMutatingPolls(true)
+    try {
+      if (!initialUser) {
+        removeTrackedPoll(poll.id)
+        return
+      }
+
+      const response = await fetch(`/api/polls/mine?pollId=${encodeURIComponent(poll.id)}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        setAccountPolls((current) => current.filter((entry) => entry.id !== poll.id))
+        removeTrackedPoll(poll.id)
+        return
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | { polls?: AccountPollSummary[] }
+        | null
+
+      if (payload?.polls && Array.isArray(payload.polls)) {
+        setAccountPolls(payload.polls)
+      } else {
+        setAccountPolls((current) => current.filter((entry) => entry.id !== poll.id))
+      }
+
+      removeTrackedPoll(poll.id)
+    } finally {
+      setIsMutatingPolls(false)
+    }
+  }
+
   return (
     <main className="p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -266,7 +345,10 @@ export function HomePollsDashboard({
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link href={createPollHref}>Create poll</Link>
+                <Link href={createPollHref}>
+                  <Plus className="size-4" />
+                  Create poll
+                </Link>
               </Button>
             </div>
             <form className="flex flex-col gap-2 sm:flex-row" onSubmit={onJoinSubmit}>
@@ -277,6 +359,7 @@ export function HomePollsDashboard({
                 aria-label="Poll link or ID"
               />
               <Button type="submit" variant="outline">
+                <Link2 className="size-4" />
                 Join poll
               </Button>
             </form>
@@ -300,12 +383,16 @@ export function HomePollsDashboard({
               description="Polls you organize."
               polls={createdPolls}
               emptyLabel="You have not created any polls yet."
+              isMutatingPolls={isMutatingPolls}
+              onRemovePoll={removePoll}
             />
             <PollListSection
               title="Joined Polls"
               description="Polls where you participate."
               polls={joinedPolls}
               emptyLabel="You have not joined any polls yet."
+              isMutatingPolls={isMutatingPolls}
+              onRemovePoll={removePoll}
             />
           </div>
         )}
@@ -328,10 +415,12 @@ export function HomePollsDashboard({
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={continueAsGuest}>
+              <UserRound className="size-4" />
               Continue without account
             </Button>
             <Button type="button" asChild>
               <Link href={registerHref} onClick={() => setPendingGuestJoinPath(null)}>
+                <UserPlus className="size-4" />
                 Create account
               </Link>
             </Button>

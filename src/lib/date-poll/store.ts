@@ -425,6 +425,52 @@ export async function hasUserVotedOnPoll(args: {
   return rows.length > 0
 }
 
+export async function getParticipantVotesForUser(args: {
+  pollId: string
+  userId: string
+}): Promise<{ fullName: string; votes: Record<string, VoteStatus> } | null> {
+  const participantParams = new URLSearchParams({
+    select: "id,fullName",
+    pollId: `eq.${args.pollId}`,
+    authUserId: `eq.${args.userId}`,
+    limit: "1",
+  })
+
+  const participantResult = await supabaseDbFetch<Array<{ id: string; fullName: string }>>(
+    `Participant?${participantParams.toString()}`,
+    { method: "GET" }
+  )
+
+  const participantRows = throwIfDbError(participantResult)
+  const participant = participantRows[0]
+
+  if (!participant) {
+    return null
+  }
+
+  const voteParams = new URLSearchParams({
+    select: "pollOptionId,status",
+    participantId: `eq.${participant.id}`,
+  })
+
+  const voteResult = await supabaseDbFetch<Array<{ pollOptionId: string; status: DbVoteStatus }>>(
+    `Vote?${voteParams.toString()}`,
+    { method: "GET" }
+  )
+
+  const voteRows = throwIfDbError(voteResult)
+  const votes: Record<string, VoteStatus> = {}
+
+  for (const voteRow of voteRows) {
+    votes[voteRow.pollOptionId] = dbStatusToVoteStatus(voteRow.status)
+  }
+
+  return {
+    fullName: participant.fullName,
+    votes,
+  }
+}
+
 export async function upsertParticipantVotes(args: {
   pollId: string
   fullName: string

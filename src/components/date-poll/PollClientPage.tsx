@@ -1,6 +1,7 @@
 "use client"
 
 import { startOfDay } from "date-fns"
+import { BarChart3, Eraser, Loader2, Send } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
@@ -19,6 +20,12 @@ type VotePayload = {
   poll: PollView
 }
 
+type PollClientPageProps = {
+  initialPoll: PollView
+  initialFullName?: string
+  initialVotes?: Record<string, VoteStatus>
+}
+
 const VOTE_LABELS: Record<VoteStatus, string> = {
   can: "can",
   maybe: "maybe",
@@ -35,12 +42,12 @@ function formatOption(value: string): string {
   }).format(parsedDate)
 }
 
-export function PollClientPage({ initialPoll }: { initialPoll: PollView }) {
+export function PollClientPage({ initialPoll, initialFullName, initialVotes }: PollClientPageProps) {
   const router = useRouter()
   const poll = initialPoll
 
-  const [fullName, setFullName] = useState("")
-  const [votes, setVotes] = useState<Record<string, VoteStatus>>({})
+  const [fullName, setFullName] = useState(initialFullName ?? "")
+  const [votes, setVotes] = useState<Record<string, VoteStatus>>(initialVotes ?? {})
   const [selectedRange, setSelectedRange] = useState<DateRange>()
   const [rangeStatus, setRangeStatus] = useState<VoteStatus>("can")
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +93,15 @@ export function PollClientPage({ initialPoll }: { initialPoll: PollView }) {
     () => poll.options.every((option) => votes[option.id]),
     [poll.options, votes]
   )
+
+  useEffect(() => {
+    upsertTrackedPoll({
+      id: poll.id,
+      title: poll.title,
+      path: `/poll/${poll.id}`,
+      role: "participant",
+    })
+  }, [poll.id, poll.title])
 
   function setVote(optionId: string, status: VoteStatus) {
     setVotes((prev) => ({ ...prev, [optionId]: status }))
@@ -202,19 +218,6 @@ export function PollClientPage({ initialPoll }: { initialPoll: PollView }) {
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="fullName">
-                Full name
-              </label>
-              <Input
-                id="fullName"
-                required
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Max Mustermann"
-              />
-            </div>
-
             <div className="space-y-3 rounded-lg border p-4">
               <div className="space-y-1">
                 <p className="text-sm font-medium">Set availability for a range</p>
@@ -277,6 +280,7 @@ export function PollClientPage({ initialPoll }: { initialPoll: PollView }) {
                     setError(null)
                   }}
                 >
+                  <Eraser className="size-3.5" />
                   Clear
                 </Button>
               </div>
@@ -335,14 +339,40 @@ export function PollClientPage({ initialPoll }: { initialPoll: PollView }) {
               </TableBody>
             </Table>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="fullName">
+                Full name
+              </label>
+              <Input
+                id="fullName"
+                required
+                value={fullName}
+                onChange={(event) => setFullName(event.target.value)}
+                placeholder="Max Mustermann"
+              />
+            </div>
+
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Submitting..." : "Submit"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="size-4" />
+                    Submit
+                  </>
+                )}
               </Button>
               <Button type="button" variant="outline" asChild>
-                <Link href={`/poll/${poll.id}/results`}>View results</Link>
+                <Link href={`/poll/${poll.id}/results`}>
+                  <BarChart3 className="size-4" />
+                  View results
+                </Link>
               </Button>
             </div>
           </form>

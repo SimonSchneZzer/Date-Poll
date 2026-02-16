@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { Loader2, LogIn } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -103,7 +103,10 @@ export function LoginForm({ nextPath, configured, initialError }: LoginFormProps
                 Signing in...
               </>
             ) : (
-              "Sign in with password"
+              <>
+                <LogIn className="size-4" />
+                Sign in with password
+              </>
             )}
           </Button>
         </form>

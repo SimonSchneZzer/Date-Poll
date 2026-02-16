@@ -2,8 +2,8 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Menu, Moon, Plus, Sun, Trash2, X } from "lucide-react"
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { ListX, LogIn, LogOut, Menu, Moon, Plus, Sun, Trash2, X } from "lucide-react"
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import {
@@ -18,7 +18,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
-import type { AccountPollSummary } from "@/lib/date-poll/account-polls"
+import {
+  mergeAccountAndTrackedPolls,
+  type AccountPollSummary,
+} from "@/lib/date-poll/account-polls"
 import {
   clearTrackedPolls,
   getTrackedPollsServerSnapshot,
@@ -85,6 +88,21 @@ export function AppShell({
     const initialTheme = resolveInitialTheme()
     applyTheme(initialTheme)
   }, [])
+
+  useEffect(() => {
+    setIsMobileNavOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!isMobileNavOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isMobileNavOpen])
 
   useEffect(() => {
     setAccountPolls(initialAccountPolls)
@@ -249,19 +267,38 @@ export function AppShell({
     }
   }
 
-  const sidebarPolls: SidebarPoll[] = initialUser
-    ? accountPolls
-    : trackedPolls.map((poll) => ({
-        id: poll.id,
-        title: poll.title,
-        path: poll.path,
-        role: poll.organizer ? "organizer" : "participant",
-        lastInteractionAt: poll.lastInteractionAt,
-      }))
-  const hasOwnedPolls = sidebarPolls.some((poll) => poll.role === "organizer")
+  const sidebarPolls = useMemo<SidebarPoll[]>(() => {
+    if (initialUser) {
+      return mergeAccountAndTrackedPolls({
+        accountPolls,
+        trackedPolls,
+      })
+    }
+
+    return trackedPolls.map((poll) => ({
+      id: poll.id,
+      title: poll.title,
+      path: poll.path,
+      role: poll.organizer ? "organizer" : "participant",
+      lastInteractionAt: poll.lastInteractionAt,
+    }))
+  }, [accountPolls, initialUser, trackedPolls])
+  const ownedSidebarPolls = useMemo(
+    () => sidebarPolls.filter((poll) => poll.role === "organizer"),
+    [sidebarPolls]
+  )
+  const joinedSidebarPolls = useMemo(
+    () => sidebarPolls.filter((poll) => poll.role === "participant"),
+    [sidebarPolls]
+  )
+  const hasOwnedPolls = ownedSidebarPolls.length > 0
   const allProjectsActionLabel = hasOwnedPolls
     ? "Leave/Delete all projects"
     : "Leave all projects"
+
+  function closeMobileNav() {
+    setIsMobileNavOpen(false)
+  }
 
   function pollClass(href: string) {
     return cn(
@@ -272,16 +309,8 @@ export function AppShell({
     )
   }
 
-  function renderPollList(onNavigate?: () => void) {
-    if (sidebarPolls.length === 0) {
-      return (
-        <div className="text-muted-foreground rounded-md px-3 py-2 text-sm">
-          No polls yet.
-        </div>
-      )
-    }
-
-    return sidebarPolls.map((poll) => (
+  function renderPollRows(polls: SidebarPoll[], onNavigate?: () => void) {
+    return polls.map((poll) => (
       <div key={poll.id} className="group flex items-center gap-1">
         <Link href={poll.path} className={pollClass(poll.path)} onClick={onNavigate}>
           <p className="truncate text-sm font-medium">{poll.title}</p>
@@ -293,21 +322,23 @@ export function AppShell({
           type="button"
           variant={poll.role === "organizer" ? "destructive" : "ghost"}
           size="icon-xs"
-          className={
+          className={cn(
+            "size-7 md:size-6",
             poll.role === "organizer"
               ? "opacity-90 hover:opacity-100"
               : "text-muted-foreground hover:text-foreground"
-          }
+          )}
           aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
           disabled={isMutatingPolls}
-          onClick={() =>
+          onClick={() => {
             setConfirmState({
               type: "single",
               pollId: poll.id,
               pollTitle: poll.title,
               pollRole: poll.role,
             })
-          }
+            closeMobileNav()
+          }}
         >
           {poll.role === "organizer" ? (
             <Trash2 className="size-3.5" />
@@ -317,6 +348,28 @@ export function AppShell({
         </Button>
       </div>
     ))
+  }
+
+  function renderPollSection(args: {
+    title: string
+    polls: SidebarPoll[]
+    emptyLabel: string
+    onNavigate?: () => void
+  }) {
+    return (
+      <div className="space-y-1">
+        <p className="text-muted-foreground px-2 text-xs font-medium tracking-wide uppercase">
+          {args.title}
+        </p>
+        {args.polls.length > 0 ? (
+          <div className="space-y-1">{renderPollRows(args.polls, args.onNavigate)}</div>
+        ) : (
+          <div className="text-muted-foreground rounded-md px-3 py-2 text-sm">
+            {args.emptyLabel}
+          </div>
+        )}
+      </div>
+    )
   }
 
   function renderThemeSwitch(side: "top" | "bottom") {
@@ -371,6 +424,7 @@ export function AppShell({
             disabled={isMutatingPolls}
             onClick={() => setConfirmState({ type: "all" })}
           >
+            <ListX className="size-4" />
             {allProjectsActionLabel}
           </Button>
           {initialUser ? (
@@ -381,11 +435,15 @@ export function AppShell({
               disabled={isSigningOut}
               onClick={signOut}
             >
+              <LogOut className="size-4" />
               Log out
             </Button>
           ) : (
             <Button type="button" variant="ghost" className="w-full justify-start" asChild>
-              <Link href={loginHref}>Log in</Link>
+              <Link href={loginHref}>
+                <LogIn className="size-4" />
+                Log in
+              </Link>
             </Button>
           )}
         </PopoverContent>
@@ -421,11 +479,17 @@ export function AppShell({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="space-y-2 p-3">
-            <p className="text-muted-foreground px-2 text-xs font-medium tracking-wide uppercase">
-              Your polls
-            </p>
-            <div className="space-y-1">{renderPollList()}</div>
+          <div className="space-y-4 p-3">
+            {renderPollSection({
+              title: "Your polls",
+              polls: ownedSidebarPolls,
+              emptyLabel: "No polls yet.",
+            })}
+            {renderPollSection({
+              title: "Other polls",
+              polls: joinedSidebarPolls,
+              emptyLabel: "No joined polls yet.",
+            })}
           </div>
         </ScrollArea>
 
@@ -446,6 +510,8 @@ export function AppShell({
               size="icon"
               onClick={() => setIsMobileNavOpen((prev) => !prev)}
               aria-label="Toggle navigation"
+              aria-expanded={isMobileNavOpen}
+              aria-controls="mobile-sidebar"
             >
               <Menu className="size-4" />
             </Button>
@@ -462,23 +528,62 @@ export function AppShell({
           </div>
         </header>
 
-        {isMobileNavOpen ? (
-          <div className="border-b bg-card/40 px-4 py-3 md:hidden">
-            <div className="mb-3 space-y-1">
-              <p className="text-muted-foreground px-3 text-xs font-medium tracking-wide uppercase">
-                Your polls
-              </p>
-              {renderPollList(() => setIsMobileNavOpen(false))}
-            </div>
-            <div className="flex items-center justify-between border-t pt-3">
-              {renderThemeSwitch("bottom")}
-              {renderUserMenu()}
-            </div>
-          </div>
-        ) : null}
-
         <div className="flex-1">{children}</div>
       </div>
+
+      {isMobileNavOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Close navigation"
+            className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px] md:hidden"
+            onClick={closeMobileNav}
+          />
+          <aside
+            id="mobile-sidebar"
+            className="fixed inset-y-0 left-0 z-40 flex w-[86vw] max-w-sm flex-col border-r bg-background shadow-xl md:hidden"
+          >
+            <div className="flex h-16 items-center justify-between border-b px-4">
+              <Link href="/" className="text-sm font-semibold tracking-wide" onClick={closeMobileNav}>
+                Date Poll
+              </Link>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                aria-label="Close navigation"
+                onClick={closeMobileNav}
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+
+            <ScrollArea className="flex-1">
+              <div className="space-y-4 p-3">
+                {renderPollSection({
+                  title: "Your polls",
+                  polls: ownedSidebarPolls,
+                  emptyLabel: "No polls yet.",
+                  onNavigate: closeMobileNav,
+                })}
+                {renderPollSection({
+                  title: "Other polls",
+                  polls: joinedSidebarPolls,
+                  emptyLabel: "No joined polls yet.",
+                  onNavigate: closeMobileNav,
+                })}
+              </div>
+            </ScrollArea>
+
+            <div className="border-t p-3">
+              <div className="flex items-center justify-between">
+                {renderThemeSwitch("bottom")}
+                {renderUserMenu()}
+              </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       <Dialog
         open={confirmState !== null}

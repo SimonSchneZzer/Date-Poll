@@ -1,5 +1,6 @@
 "use client"
 
+import { Loader2, UserPlus } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -140,7 +141,17 @@ export function RegisterForm({ nextPath, configured, initialError }: RegisterFor
             />
           </div>
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Creating account..." : "Create account"}
+            {isLoading ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Creating account...
+              </>
+            ) : (
+              <>
+                <UserPlus className="size-4" />
+                Create account
+              </>
+            )}
           </Button>
         </form>
 
