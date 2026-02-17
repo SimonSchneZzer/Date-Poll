@@ -181,7 +181,7 @@ type ExportTable = {
   rows: string[][]
 }
 
-const QUICK_READ_ALL_ITEMS = Number.MAX_SAFE_INTEGER
+const QUICK_READ_DEFAULT_COUNT = 7
 
 function sanitizeFileNamePart(value: string): string {
   const normalized = value
@@ -423,7 +423,7 @@ export function PollResultsView({
   const [removeVoteState, setRemoveVoteState] = useState<RemoveVoteState>(null)
   const [isRemovingVote, setIsRemovingVote] = useState(false)
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
-  const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_ALL_ITEMS)
+  const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_DEFAULT_COUNT)
   const [participantQuery, setParticipantQuery] = useState("")
   const [isParticipantColumnCollapsed, setIsParticipantColumnCollapsed] = useState(false)
 
