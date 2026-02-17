@@ -26,19 +26,18 @@ export default async function PollResultsPage({
 
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const existingVote = currentUser
-    ? await getParticipantVotesForUser({ pollId, userId: currentUser.id })
-    : null
+  const [existingVote, canManageVotes] = currentUser
+    ? await Promise.all([
+        getParticipantVotesForUser({ pollId, userId: currentUser.id }),
+        isPollOrganizer({ pollId, userId: currentUser.id }),
+      ])
+    : [null, false]
   const guestHasVoted = hasVotedInPoll(cookieStore.get(VOTED_POLLS_COOKIE)?.value, pollId)
-  const canViewResults = existingVote !== null || guestHasVoted
+  const canViewResults = canManageVotes || existingVote !== null || guestHasVoted
 
   if (!canViewResults) {
     redirect(`/poll/${pollId}?error=vote_required`)
   }
-
-  const canManageVotes = currentUser
-    ? await isPollOrganizer({ pollId, userId: currentUser.id })
-    : false
 
   return (
     <main className="p-4 sm:p-6 md:p-10">

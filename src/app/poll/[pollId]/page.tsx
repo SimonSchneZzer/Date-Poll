@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import { PollClientPage } from "@/components/date-poll/PollClientPage"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
 import { hasVotedInPoll, VOTED_POLLS_COOKIE } from "@/lib/date-poll/vote-cookie"
-import { getParticipantVotesForUser, getPoll } from "@/lib/date-poll/store"
+import { getParticipantVotesForUser, getPoll, isPollOrganizer } from "@/lib/date-poll/store"
 
 export const dynamic = "force-dynamic"
 
@@ -33,11 +33,14 @@ export default async function PollPage({
 
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const existingVote = currentUser
-    ? await getParticipantVotesForUser({ pollId, userId: currentUser.id })
-    : null
+  const [existingVote, isOrganizer] = currentUser
+    ? await Promise.all([
+        getParticipantVotesForUser({ pollId, userId: currentUser.id }),
+        isPollOrganizer({ pollId, userId: currentUser.id }),
+      ])
+    : [null, false]
   const guestHasVoted = hasVotedInPoll(cookieStore.get(VOTED_POLLS_COOKIE)?.value, pollId)
-  const canViewResults = existingVote !== null || guestHasVoted
+  const canViewResults = isOrganizer || existingVote !== null || guestHasVoted
 
   return (
     <main className="p-4 sm:p-6 md:p-10">

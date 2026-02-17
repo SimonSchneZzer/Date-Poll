@@ -153,6 +153,8 @@ type RemoveVoteState = {
   participantName: string
 } | null
 
+const QUICK_READ_ALL_ITEMS = Number.MAX_SAFE_INTEGER
+
 export function PollResultsView({
   poll,
   canManageVotes = false,
@@ -164,7 +166,7 @@ export function PollResultsView({
   const [removeVoteState, setRemoveVoteState] = useState<RemoveVoteState>(null)
   const [isRemovingVote, setIsRemovingVote] = useState(false)
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
-  const [quickReadCount, setQuickReadCount] = useState(3)
+  const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_ALL_ITEMS)
   const sortedOptions = useMemo(() => optionsByDate(pollState), [pollState])
   const rankedOptions = useMemo(
     () =>
@@ -384,7 +386,7 @@ export function PollResultsView({
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden xl:sticky xl:top-24 xl:self-start">
+        <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start">
           <CardHeader className="border-b">
             <CardTitle>Insights</CardTitle>
             <CardDescription>Quick read of the strongest options.</CardDescription>
@@ -401,14 +403,14 @@ export function PollResultsView({
                 </Badge>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr gap-1.5">
                 {quickReadPresetValues.map((value) => (
                   <Button
                     key={value}
                     type="button"
                     size="sm"
                     variant={quickReadValue === value ? "default" : "outline"}
-                    className="h-7 px-2 text-[11px]"
+                    className="h-7 w-full min-w-0 px-2 text-[11px]"
                     disabled={rankedOptions.length === 0}
                     onClick={() => updateQuickReadCount(value)}
                   >
