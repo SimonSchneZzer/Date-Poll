@@ -112,7 +112,11 @@ export default async function RootLayout({
           {THEME_INIT_SCRIPT}
         </Script>
         <AppProviders>
-          <AppShell initialUser={currentUser} initialAccountPolls={initialAccountPolls}>
+          <AppShell
+            initialUser={currentUser}
+            initialAccountPolls={initialAccountPolls}
+            initialTheme={cookieTheme}
+          >
             {children}
           </AppShell>
         </AppProviders>

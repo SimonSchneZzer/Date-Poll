@@ -104,7 +104,6 @@ function PollListSection({
   description,
   polls,
   emptyLabel,
-  isLoading,
   showSkeleton,
   isMutatingPolls,
   onRemovePoll,
@@ -113,7 +112,6 @@ function PollListSection({
   description: string
   polls: DashboardPoll[]
   emptyLabel: string
-  isLoading: boolean
   showSkeleton: boolean
   isMutatingPolls: boolean
   onRemovePoll: (poll: DashboardPoll) => void
@@ -140,7 +138,6 @@ function PollListSection({
           </div>
         ) : (
           <TooltipProvider>
-            {isLoading ? <Skeleton className="mb-1 h-2 w-20 rounded-full" /> : null}
             {polls.map((poll) => (
               <div
                 key={poll.id}
@@ -206,7 +203,6 @@ export function HomePollsDashboard({
     getTrackedPollsServerSnapshot
   )
   const [accountPolls, setAccountPolls] = useState(initialAccountPolls)
-  const [isRefreshingAccountPolls, setIsRefreshingAccountPolls] = useState(false)
   const [optimisticHiddenPollIds, setOptimisticHiddenPollIds] = useState<string[]>([])
   const [joinInput, setJoinInput] = useState("")
   const [joinError, setJoinError] = useState<string | null>(null)
@@ -232,7 +228,6 @@ export function HomePollsDashboard({
     let cancelled = false
 
     async function refresh() {
-      setIsRefreshingAccountPolls(true)
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
         if (response.status === 401) {
@@ -254,10 +249,6 @@ export function HomePollsDashboard({
         }
       } catch {
         // Keep the current list on fetch failures.
-      } finally {
-        if (!cancelled) {
-          setIsRefreshingAccountPolls(false)
-        }
       }
     }
 
@@ -578,7 +569,6 @@ export function HomePollsDashboard({
               description="Polls you organize."
               polls={createdPolls}
               emptyLabel="You have not created any polls yet."
-              isLoading={isRefreshingAccountPolls}
               showSkeleton={isMutatingPolls && createdPolls.length === 0}
               isMutatingPolls={isMutatingPolls}
               onRemovePoll={requestRemovePoll}
@@ -588,7 +578,6 @@ export function HomePollsDashboard({
               description="Polls where you participate."
               polls={joinedPolls}
               emptyLabel="You have not joined any polls yet."
-              isLoading={isRefreshingAccountPolls}
               showSkeleton={isMutatingPolls && joinedPolls.length === 0}
               isMutatingPolls={isMutatingPolls}
               onRemovePoll={requestRemovePoll}

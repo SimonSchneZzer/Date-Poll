@@ -117,10 +117,12 @@ export function AppShell({
   children,
   initialUser,
   initialAccountPolls,
+  initialTheme = null,
 }: {
   children: React.ReactNode
   initialUser: AuthUser | null
   initialAccountPolls: AccountPollSummary[]
+  initialTheme?: Theme | null
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -136,7 +138,7 @@ export function AppShell({
   const [isRefreshingAccountPolls, setIsRefreshingAccountPolls] = useState(false)
   const [optimisticHiddenPollIds, setOptimisticHiddenPollIds] = useState<string[]>([])
   const [isOptimisticallyClearingAll, setIsOptimisticallyClearingAll] = useState(false)
-  const [theme, setTheme] = useState<Theme>("light")
+  const [theme, setTheme] = useState<Theme | null>(initialTheme)
   const [isDesktopThemeSelectorOpen, setIsDesktopThemeSelectorOpen] = useState(false)
   const [isMobileThemeSelectorOpen, setIsMobileThemeSelectorOpen] = useState(false)
   const themeTransitionTimeoutRef = useRef<number | null>(null)
@@ -566,7 +568,9 @@ export function AppShell({
     : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
   const showSidebarPollSkeleton = isMutatingPolls && isOptimisticallyClearingAll
-  const lightDarkTargetTheme = theme === "dark" ? "light" : "dark"
+  const isThemeResolved = theme !== null
+  const activeTheme: Theme = theme ?? "light"
+  const lightDarkTargetTheme = activeTheme === "dark" ? "light" : "dark"
   const lightDarkTargetLabel = THEME_LABEL[lightDarkTargetTheme]
 
   useEffect(() => {
@@ -743,7 +747,6 @@ export function AppShell({
           </div>
         ) : args.polls.length > 0 ? (
           <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
-            {args.isLoading ? <Skeleton className="mb-1 h-2 w-16 rounded-full" /> : null}
             {renderPollRows({
               polls: args.polls,
               bindRowRef: args.bindRowRef,
@@ -816,14 +819,29 @@ export function AppShell({
                     type="button"
                     size="icon-sm"
                     variant="ghost"
-                    aria-label={`Switch theme to ${lightDarkTargetLabel}`}
-                    title={`Switch theme to ${lightDarkTargetLabel}`}
+                    aria-label={
+                      isThemeResolved
+                        ? `Switch theme to ${lightDarkTargetLabel}`
+                        : "Loading theme"
+                    }
+                    title={
+                      isThemeResolved
+                        ? `Switch theme to ${lightDarkTargetLabel}`
+                        : "Loading theme"
+                    }
+                    disabled={!isThemeResolved}
                     onClick={toggleTheme}
                   >
-                    {getThemeIcon(theme)}
+                    {isThemeResolved ? (
+                      getThemeIcon(activeTheme)
+                    ) : (
+                      <Skeleton className="size-4 rounded-full" />
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right">Theme: {THEME_LABEL[theme]}</TooltipContent>
+                <TooltipContent side="right">
+                  {isThemeResolved ? `Theme: ${THEME_LABEL[activeTheme]}` : "Loading theme..."}
+                </TooltipContent>
               </Tooltip>
 
               <Tooltip>
@@ -929,14 +947,32 @@ export function AppShell({
                 size="sm"
                 variant="ghost"
                 className="flex-1 justify-start"
-                aria-label={`Switch theme to ${lightDarkTargetLabel}`}
-                title={`Switch theme to ${lightDarkTargetLabel}`}
+                aria-label={
+                  isThemeResolved ? `Switch theme to ${lightDarkTargetLabel}` : "Loading theme"
+                }
+                title={isThemeResolved ? `Switch theme to ${lightDarkTargetLabel}` : "Loading theme"}
+                disabled={!isThemeResolved}
                 onClick={toggleTheme}
               >
-                {getThemeIcon(theme)}
-                Theme: {THEME_LABEL[theme]}
+                {isThemeResolved ? (
+                  <>
+                    {getThemeIcon(activeTheme)}
+                    Theme: {THEME_LABEL[activeTheme]}
+                  </>
+                ) : (
+                  <>
+                    <Skeleton className="size-4 rounded-full" />
+                    <Skeleton className="h-3 w-24 rounded-full" />
+                  </>
+                )}
               </Button>
-              <Popover open={isThemeSelectorOpen} onOpenChange={setIsThemeSelectorOpen}>
+              <Popover
+                open={isThemeResolved ? isThemeSelectorOpen : false}
+                onOpenChange={(open) => {
+                  if (!isThemeResolved) return
+                  setIsThemeSelectorOpen(open)
+                }}
+              >
                 <PopoverTrigger asChild>
                   <Button
                     type="button"
@@ -945,6 +981,7 @@ export function AppShell({
                     className="size-8"
                     aria-label="Open theme selector"
                     title="Select theme"
+                    disabled={!isThemeResolved}
                   >
                     <ChevronDown className="size-4" />
                   </Button>
@@ -956,7 +993,7 @@ export function AppShell({
                         key={themeOption}
                         type="button"
                         size="sm"
-                        variant={themeOption === theme ? "secondary" : "ghost"}
+                        variant={themeOption === activeTheme && isThemeResolved ? "secondary" : "ghost"}
                         className="w-full justify-start"
                         onClick={() => selectTheme(themeOption)}
                       >
