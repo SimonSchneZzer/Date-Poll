@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ListX, LogIn, LogOut, Menu, Moon, Plus, Sun, Trash2, X } from "lucide-react"
+import { ListX, LogIn, LogOut, Menu, Moon, Plus, Settings, Sun, Trash2, X } from "lucide-react"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
@@ -295,6 +294,7 @@ export function AppShell({
   const allProjectsActionLabel = hasOwnedPolls
     ? "Leave/Delete all projects"
     : "Leave all projects"
+  const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
 
   function closeMobileNav() {
     setIsMobileNavOpen(false)
@@ -318,34 +318,41 @@ export function AppShell({
             {poll.role === "participant" ? "Participant" : "Organizer"}
           </p>
         </Link>
-        <Button
-          type="button"
-          variant={poll.role === "organizer" ? "destructive" : "ghost"}
-          size="icon-xs"
-          className={cn(
-            "size-7 md:size-6",
-            poll.role === "organizer"
-              ? "opacity-90 hover:opacity-100"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
-          disabled={isMutatingPolls}
-          onClick={() => {
-            setConfirmState({
-              type: "single",
-              pollId: poll.id,
-              pollTitle: poll.title,
-              pollRole: poll.role,
-            })
-            closeMobileNav()
-          }}
-        >
-          {poll.role === "organizer" ? (
-            <Trash2 className="size-3.5" />
-          ) : (
-            <X className="size-3.5" />
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant={poll.role === "organizer" ? "destructive" : "ghost"}
+              size="icon-xs"
+              className={cn(
+                "size-7 md:size-6",
+                poll.role === "organizer"
+                  ? "opacity-90 hover:opacity-100"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
+              disabled={isMutatingPolls}
+              onClick={() => {
+                setConfirmState({
+                  type: "single",
+                  pollId: poll.id,
+                  pollTitle: poll.title,
+                  pollRole: poll.role,
+                })
+                closeMobileNav()
+              }}
+            >
+              {poll.role === "organizer" ? (
+                <Trash2 className="size-3.5" />
+              ) : (
+                <X className="size-3.5" />
+              )}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {poll.role === "organizer" ? "Delete this poll" : "Leave this poll"}
+          </TooltipContent>
+        </Tooltip>
       </div>
     ))
   }
@@ -372,82 +379,90 @@ export function AppShell({
     )
   }
 
-  function renderThemeSwitch(side: "top" | "bottom") {
+  function renderSidebarFooter(onNavigate?: () => void) {
     return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
+      <div className="border-t p-3">
+        <div className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-background via-muted/25 to-background p-3">
+          <div className="pointer-events-none absolute -top-12 -right-8 size-24 rounded-full bg-primary/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-10 -left-10 size-24 rounded-full bg-emerald-500/10 blur-2xl" />
+
+          <div className="relative space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="bg-background/90 flex size-8 shrink-0 items-center justify-center rounded-full border text-xs font-semibold shadow-sm">
+                {getAvatarLetter(initialUser)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {initialUser?.fullName ?? initialUser?.email ?? "Guest"}
+                </p>
+                <p className="text-muted-foreground truncate text-xs">
+                  {initialUser?.email ?? "Not signed in"}
+                </p>
+              </div>
+            </div>
+
+            {initialUser ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" size="sm" variant="outline" className="justify-start" asChild>
+                  <Link href="/settings" onClick={onNavigate}>
+                    <Settings className="size-4" />
+                    Settings
+                  </Link>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="justify-start"
+                  disabled={isSigningOut}
+                  onClick={() => {
+                    onNavigate?.()
+                    void signOut()
+                  }}
+                >
+                  <LogOut className="size-4" />
+                  {isSigningOut ? "Logging out..." : "Log out"}
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" size="sm" variant="outline" className="w-full justify-start" asChild>
+                <Link href={loginHref} onClick={onNavigate}>
+                  <LogIn className="size-4" />
+                  Log in
+                </Link>
+              </Button>
+            )}
+
             <Button
               type="button"
-              variant="outline"
-              size="icon-sm"
+              size="sm"
+              variant="ghost"
+              className="w-full justify-start"
               aria-label="Toggle theme"
               onClick={toggleTheme}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />
+              Toggle theme
             </Button>
-          </TooltipTrigger>
-          <TooltipContent side={side}>Toggle theme</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
-  }
 
-  function renderUserMenu() {
-    return (
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon-sm"
-            aria-label="Account menu"
-            className="rounded-full font-semibold"
-          >
-            {getAvatarLetter(initialUser)}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-56 space-y-2 p-2">
-          <div className="px-2 py-1">
-            <p className="truncate text-sm font-medium">
-              {initialUser?.fullName ?? initialUser?.email ?? "Guest"}
-            </p>
-            {initialUser?.email ? (
-              <p className="text-muted-foreground truncate text-xs">{initialUser.email}</p>
-            ) : null}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full justify-start"
-            disabled={isMutatingPolls}
-            onClick={() => setConfirmState({ type: "all" })}
-          >
-            <ListX className="size-4" />
-            {allProjectsActionLabel}
-          </Button>
-          {initialUser ? (
             <Button
               type="button"
+              size="sm"
               variant="ghost"
               className="w-full justify-start"
-              disabled={isSigningOut}
-              onClick={signOut}
+              disabled={isMutatingPolls}
+              onClick={() => {
+                setConfirmState({ type: "all" })
+                onNavigate?.()
+              }}
             >
-              <LogOut className="size-4" />
-              Log out
+              <ListX className="size-4" />
+              {footerClearLabel}
             </Button>
-          ) : (
-            <Button type="button" variant="ghost" className="w-full justify-start" asChild>
-              <Link href={loginHref}>
-                <LogIn className="size-4" />
-                Log in
-              </Link>
-            </Button>
-          )}
-        </PopoverContent>
-      </Popover>
+          </div>
+        </div>
+      </div>
     )
   }
 
@@ -456,26 +471,25 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <TooltipProvider>
+      <div className="min-h-screen bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-card/30 md:flex md:flex-col">
         <div className="flex h-16 items-center justify-between border-b px-4">
           <Link href="/" className="text-sm font-semibold tracking-wide">
             Date Poll
           </Link>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  href={createPollHref}
-                  aria-label="Create poll"
-                  className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
-                >
-                  <Plus className="size-4" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right">Create poll</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href={createPollHref}
+                aria-label="Create poll"
+                className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+              >
+                <Plus className="size-4" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right">Create poll</TooltipContent>
+          </Tooltip>
         </div>
 
         <ScrollArea className="flex-1">
@@ -493,38 +507,43 @@ export function AppShell({
           </div>
         </ScrollArea>
 
-        <div className="border-t p-3">
-          <div className="flex items-center justify-between">
-            {renderThemeSwitch("top")}
-            {renderUserMenu()}
-          </div>
-        </div>
+        {renderSidebarFooter()}
       </aside>
 
       <div className="flex min-h-screen min-w-0 flex-col md:pl-64">
         <header className="sticky top-0 z-20 flex h-16 items-center border-b bg-background/90 px-4 backdrop-blur md:hidden">
           <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setIsMobileNavOpen((prev) => !prev)}
-              aria-label="Toggle navigation"
-              aria-expanded={isMobileNavOpen}
-              aria-controls="mobile-sidebar"
-            >
-              <Menu className="size-4" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsMobileNavOpen((prev) => !prev)}
+                  aria-label="Toggle navigation"
+                  aria-expanded={isMobileNavOpen}
+                  aria-controls="mobile-sidebar"
+                >
+                  <Menu className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Open navigation</TooltipContent>
+            </Tooltip>
             <Link href="/" className="text-sm font-semibold tracking-wide">
               Date Poll
             </Link>
-            <Link
-              href={createPollHref}
-              aria-label="Create poll"
-              className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
-            >
-              <Plus className="size-4" />
-            </Link>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href={createPollHref}
+                  aria-label="Create poll"
+                  className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+                >
+                  <Plus className="size-4" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Create poll</TooltipContent>
+            </Tooltip>
           </div>
         </header>
 
@@ -547,15 +566,20 @@ export function AppShell({
               <Link href="/" className="text-sm font-semibold tracking-wide" onClick={closeMobileNav}>
                 Date Poll
               </Link>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon-sm"
-                aria-label="Close navigation"
-                onClick={closeMobileNav}
-              >
-                <X className="size-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Close navigation"
+                    onClick={closeMobileNav}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Close navigation</TooltipContent>
+              </Tooltip>
             </div>
 
             <ScrollArea className="flex-1">
@@ -575,12 +599,7 @@ export function AppShell({
               </div>
             </ScrollArea>
 
-            <div className="border-t p-3">
-              <div className="flex items-center justify-between">
-                {renderThemeSwitch("bottom")}
-                {renderUserMenu()}
-              </div>
-            </div>
+            {renderSidebarFooter(closeMobileNav)}
           </aside>
         </>
       ) : null}
@@ -640,6 +659,7 @@ export function AppShell({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }

@@ -8,6 +8,11 @@ import { useEffect, useMemo, useState } from "react"
 import type { DateRange } from "react-day-picker"
 
 import { DateRangePicker } from "@/components/date-poll/DateRangePicker"
+import {
+  VOTE_STATUS_LABEL,
+  VOTE_STATUS_ORDER,
+  VoteStatusIcon,
+} from "@/components/date-poll/vote-status-ui"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,6 +26,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
 
@@ -32,12 +38,6 @@ type PollClientPageProps = {
   initialPoll: PollView
   initialFullName?: string
   initialVotes?: Record<string, VoteStatus>
-}
-
-const VOTE_ICONS: Record<VoteStatus, string> = {
-  can: "✅",
-  maybe: "⚠️",
-  cant: "❌",
 }
 
 const VOTE_ACTION_LABELS: Record<VoteStatus, string> = {
@@ -234,206 +234,259 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{poll.title}</CardTitle>
-          {poll.description ? <CardDescription>{poll.description}</CardDescription> : null}
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+        <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
+              Poll
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{poll.title}</h1>
+            {poll.description ? (
+              <p className="text-muted-foreground max-w-2xl text-sm">{poll.description}</p>
+            ) : (
+              <p className="text-muted-foreground max-w-2xl text-sm">
+                Set your availability and submit your vote.
+              </p>
+            )}
+          </div>
+          <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
+            <Link href={`/poll/${poll.id}/results`}>
+              <BarChart3 className="size-4" />
+              View results
+            </Link>
+          </Button>
+        </div>
+        <div className="relative mt-4 flex flex-wrap gap-2">
+          <Badge variant="secondary">Dates: {poll.options.length}</Badge>
+          {VOTE_STATUS_ORDER.map((status) => (
+            <Badge key={status} variant="secondary">
+              <VoteStatusIcon status={status} className="size-3.5" />
+              {voteSummary[status]}
+            </Badge>
+          ))}
+          <Badge variant="secondary">{isCompleteVote ? "Ready to submit" : "Incomplete vote"}</Badge>
+        </div>
+      </section>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="border-b">
+          <CardTitle>Set availability</CardTitle>
+          <CardDescription>Use range selection first, then fine-tune individual dates.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Set availability for a range</p>
-                <p className="text-muted-foreground text-xs">
-                  1. pick a range, 2. Choose a status. It is applied automatically.
-                </p>
+        <CardContent className="pt-6">
+          <TooltipProvider>
+            <form className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]" onSubmit={handleSubmit}>
+              <div className="space-y-5">
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">Set availability for a range</p>
+                    <p className="text-muted-foreground text-xs">
+                      1. Pick a range. 2. Choose a status. It is applied automatically.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <DateRangePicker
+                        value={selectedRange}
+                        onChange={setSelectedRange}
+                        fromDate={organizerTimespan?.from}
+                        toDate={organizerTimespan?.to}
+                        defaultMonth={organizerTimespan?.from}
+                        numberOfMonths={2}
+                        placeholder="Select available range (or a single day)"
+                      />
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon-sm"
+                          aria-label="Clear selected range"
+                          disabled={!selectedRange?.from}
+                          onClick={() => {
+                            setSelectedRange(undefined)
+                            setError(null)
+                          }}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Clear selected range</TooltipContent>
+                    </Tooltip>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                    {VOTE_STATUS_ORDER.map((status) => (
+                      <Button
+                        key={status}
+                        type="button"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                        variant={rangeStatus === status ? "default" : "outline"}
+                        onClick={() => setRangeStatus(status)}
+                      >
+                        <VoteStatusIcon status={status} className="size-3.5" />
+                        {VOTE_STATUS_LABEL[status]}
+                      </Button>
+                    ))}
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="w-full sm:w-auto"
+                      variant="ghost"
+                      onClick={() => setIsClearDialogOpen(true)}
+                    >
+                      <Eraser className="size-3.5" />
+                      Clear
+                    </Button>
+                  </div>
+
+                  {selectedRange?.from ? (
+                    <p className="text-muted-foreground text-xs">
+                      Auto-applied{" "}
+                      <span className="inline-flex items-center gap-1 align-middle">
+                        <VoteStatusIcon status={rangeStatus} className="size-3.5" />
+                        {VOTE_STATUS_LABEL[rangeStatus]}
+                      </span>{" "}
+                      to {rangeOptionIds.length} {rangeOptionIds.length === 1 ? "date" : "dates"} in the selected
+                      range.
+                    </p>
+                  ) : null}
+
+                  <p className="text-muted-foreground text-xs">
+                    Tip: select a single date or a longer range, then fine-tune below if needed.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Fine-tune individual dates</p>
+                  <div className="overflow-hidden rounded-xl border">
+                    <Table className="table-fixed">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[56%]">Date option</TableHead>
+                          <TableHead className="text-right">Your vote</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {optionsByDate.map((option) => {
+                          const optionLabel = formatOption(option.value)
+
+                          return (
+                            <TableRow key={option.id}>
+                              <TableCell className="whitespace-normal">{optionLabel}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  {(["can", "maybe", "cant"] as const).map((status) => {
+                                    return (
+                                      <Tooltip key={status}>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            type="button"
+                                            size="icon-sm"
+                                            className="size-8 sm:size-9"
+                                            aria-label={`${VOTE_ACTION_LABELS[status]} for ${optionLabel}`}
+                                            variant={votes[option.id] === status ? "default" : "outline"}
+                                            onClick={() => setVote(option.id, status)}
+                                          >
+                                            <VoteStatusIcon status={status} className="size-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>{VOTE_ACTION_LABELS[status]}</TooltipContent>
+                                      </Tooltip>
+                                    )
+                                  })}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <DateRangePicker
-                    value={selectedRange}
-                    onChange={setSelectedRange}
-                    fromDate={organizerTimespan?.from}
-                    toDate={organizerTimespan?.to}
-                    defaultMonth={organizerTimespan?.from}
-                    numberOfMonths={2}
-                    placeholder="Select available range (or a single day)"
+              <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm font-medium">Current vote</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {VOTE_STATUS_ORDER.map((status) => (
+                      <Badge key={status} variant="outline">
+                        <VoteStatusIcon status={status} className="size-3.5" />
+                        {voteSummary[status]}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="text-muted-foreground mt-3 text-xs">
+                    {isCompleteVote
+                      ? "All dates are selected. You can submit now."
+                      : "Select one status for each date option before submitting."}
+                  </p>
+                </div>
+
+                <div className="space-y-2 rounded-xl border p-4">
+                  <label className="text-sm font-medium" htmlFor="fullName">
+                    Full name
+                  </label>
+                  <Input
+                    id="fullName"
+                    required
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    placeholder="Max Mustermann"
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="Clear selected range"
-                  title="Clear selected range"
-                  disabled={!selectedRange?.from}
-                  onClick={() => {
-                    setSelectedRange(undefined)
-                    setError(null)
-                  }}
-                >
-                  <X className="size-4" />
-                </Button>
+
+                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+                <div className="space-y-2">
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="size-4" />
+                        Submit vote
+                      </>
+                    )}
+                  </Button>
+                  <Button type="button" variant="outline" className="w-full" asChild>
+                    <Link href={`/poll/${poll.id}/results`}>
+                      <BarChart3 className="size-4" />
+                      View results
+                    </Link>
+                  </Button>
+                </div>
               </div>
+            </form>
 
-              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                <Button
-                  type="button"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  variant={rangeStatus === "can" ? "default" : "outline"}
-                  onClick={() => setRangeStatus("can")}
-                >
-                  ✅ can
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  variant={rangeStatus === "maybe" ? "default" : "outline"}
-                  onClick={() => setRangeStatus("maybe")}
-                >
-                  ⚠️ maybe
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  variant={rangeStatus === "cant" ? "default" : "outline"}
-                  onClick={() => setRangeStatus("cant")}
-                >
-                  ❌ can&apos;t
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                  variant="ghost"
-                  onClick={() => setIsClearDialogOpen(true)}
-                >
-                  <Eraser className="size-3.5" />
-                  Clear
-                </Button>
-              </div>
-
-              {selectedRange?.from ? (
-                <p className="text-muted-foreground text-xs">
-                  Auto-applied{" "}
-                  {rangeStatus === "can" ? "✅ can" : rangeStatus === "maybe" ? "⚠️ maybe" : "❌ can't"}{" "}
-                  to {rangeOptionIds.length} {rangeOptionIds.length === 1 ? "date" : "dates"} in the selected range.
-                </p>
-              ) : null}
-
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">✅ {voteSummary.can}</Badge>
-                <Badge variant="outline">⚠️ {voteSummary.maybe}</Badge>
-                <Badge variant="outline">❌ {voteSummary.cant}</Badge>
-              </div>
-
-              <p className="text-muted-foreground text-xs">
-                Tip: select a single date or a longer range, then fine-tune below if needed.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Fine-tune individual dates</p>
-            </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date option</TableHead>
-                  <TableHead>Your vote</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {optionsByDate.map((option) => {
-                  const optionLabel = formatOption(option.value)
-
-                  return (
-                    <TableRow key={option.id}>
-                      <TableCell>{optionLabel}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          {(["can", "maybe", "cant"] as const).map((status) => (
-                            <Button
-                              key={status}
-                              type="button"
-                              size="icon-sm"
-                              className="size-9"
-                              aria-label={`${VOTE_ACTION_LABELS[status]} for ${optionLabel}`}
-                              title={VOTE_ACTION_LABELS[status]}
-                              variant={votes[option.id] === status ? "default" : "outline"}
-                              onClick={() => setVote(option.id, status)}
-                            >
-                              <span aria-hidden>{VOTE_ICONS[status]}</span>
-                            </Button>
-                          ))}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="fullName">
-                Full name
-              </label>
-              <Input
-                id="fullName"
-                required
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Max Mustermann"
-              />
-            </div>
-
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <Send className="size-4" />
-                    Submit
-                  </>
-                )}
-              </Button>
-              <Button type="button" variant="outline" asChild>
-                <Link href={`/poll/${poll.id}/results`}>
-                  <BarChart3 className="size-4" />
-                  View results
-                </Link>
-              </Button>
-            </div>
-          </form>
-
-          <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Clear all selected dates?</DialogTitle>
-                <DialogDescription>
-                  This will remove all selected availability statuses for every date.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setIsClearDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="button" variant="destructive" onClick={clearAllVotes}>
-                  Clear all dates
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Clear all selected dates?</DialogTitle>
+                  <DialogDescription>
+                    This will remove all selected availability statuses for every date.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsClearDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" variant="destructive" onClick={clearAllVotes}>
+                    Clear all dates
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </TooltipProvider>
         </CardContent>
       </Card>
     </div>

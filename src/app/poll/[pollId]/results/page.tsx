@@ -4,6 +4,7 @@ import { cookies } from "next/headers"
 import { notFound } from "next/navigation"
 
 import { PollResultsView } from "@/components/date-poll/PollResultsView"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
 import { getPoll, isPollOrganizer } from "@/lib/date-poll/store"
@@ -29,22 +30,38 @@ export default async function PollResultsPage({
     : false
 
   return (
-    <main className="p-6 md:p-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">{poll.title}</h1>
-            {poll.description ? (
-              <p className="text-muted-foreground text-sm">{poll.description}</p>
-            ) : null}
+    <main className="p-4 sm:p-6 md:p-10">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+          <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
+                Results
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{poll.title}</h1>
+              {poll.description ? (
+                <p className="text-muted-foreground max-w-2xl text-sm">{poll.description}</p>
+              ) : (
+                <p className="text-muted-foreground max-w-2xl text-sm">
+                  Overview of participant availability for each date option.
+                </p>
+              )}
+            </div>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
+              <Link href={`/poll/${poll.id}`}>
+                <PencilLine className="size-4" />
+                Edit your vote
+              </Link>
+            </Button>
           </div>
-          <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
-            <Link href={`/poll/${poll.id}`}>
-              <PencilLine className="size-4" />
-              Edit your vote
-            </Link>
-          </Button>
-        </div>
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <Badge variant="secondary">Participants: {poll.participants.length}</Badge>
+            <Badge variant="secondary">Options: {poll.options.length}</Badge>
+            <Badge variant="secondary">{canManageVotes ? "Organizer view" : "Participant view"}</Badge>
+          </div>
+        </section>
 
         <PollResultsView poll={poll} canManageVotes={canManageVotes} />
       </div>

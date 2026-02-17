@@ -79,6 +79,26 @@ function mapUser(user: SupabaseUser): AuthUser {
   }
 }
 
+function parseUserPayload(payload: unknown): SupabaseUser | null {
+  if (!payload || typeof payload !== "object") {
+    return null
+  }
+
+  const candidate = payload as { user?: unknown; id?: unknown }
+  if (candidate.user && typeof candidate.user === "object") {
+    const nested = candidate.user as Partial<SupabaseUser>
+    if (typeof nested.id === "string") {
+      return nested as SupabaseUser
+    }
+  }
+
+  if (typeof candidate.id === "string") {
+    return payload as SupabaseUser
+  }
+
+  return null
+}
+
 function parseSupabaseError(payload: unknown): string {
   if (!payload || typeof payload !== "object") {
     return "Authentication failed"
@@ -260,11 +280,14 @@ export async function getUserFromAccessToken(
 
     const payload = await response.json().catch(() => null)
 
-    if (!response.ok || !payload || typeof payload !== "object") {
+    if (!response.ok) {
       return { data: null, error: parseSupabaseError(payload) }
     }
 
-    const user = payload as SupabaseUser
+    const user = parseUserPayload(payload)
+    if (!user) {
+      return { data: null, error: "Authentication failed" }
+    }
 
     return {
       data: mapUser(user),
@@ -272,6 +295,94 @@ export async function getUserFromAccessToken(
     }
   } catch {
     return { data: null, error: "Unable to reach Supabase" }
+  }
+}
+
+export function getAccessTokenFromCookies(cookieReader: CookieReader): string | null {
+  return cookieReader.get(ACCESS_TOKEN_COOKIE)?.value ?? null
+}
+
+export function getRefreshTokenFromCookies(cookieReader: CookieReader): string | null {
+  return cookieReader.get(REFRESH_TOKEN_COOKIE)?.value ?? null
+}
+
+export async function updateCurrentUserProfile(args: {
+  accessToken: string
+  email?: string
+  password?: string
+  fullName?: string | null
+}): Promise<AuthApiResponse<AuthUser>> {
+  const config = getSupabaseConfig()
+  if (!config) {
+    return { data: null, error: "Supabase is not configured" }
+  }
+
+  const body: Record<string, unknown> = {}
+  if (typeof args.email === "string") {
+    body.email = args.email
+  }
+  if (typeof args.password === "string") {
+    body.password = args.password
+  }
+  if (args.fullName !== undefined) {
+    body.data = { full_name: args.fullName, name: args.fullName }
+  }
+
+  try {
+    const response = await fetch(`${config.url}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: config.anonKey,
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    })
+
+    const payload = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      return { data: null, error: parseSupabaseError(payload) }
+    }
+
+    const user = parseUserPayload(payload)
+    if (!user) {
+      return { data: null, error: "Profile update failed" }
+    }
+
+    return { data: mapUser(user), error: null }
+  } catch {
+    return { data: null, error: "Unable to reach Supabase" }
+  }
+}
+
+export async function deleteAuthUserById(userId: string): Promise<{ error: string | null }> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url || !serviceRoleKey) {
+    return { error: "Account deletion requires SUPABASE_SERVICE_ROLE_KEY" }
+  }
+
+  try {
+    const response = await fetch(`${url}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+      cache: "no-store",
+    })
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      return { error: parseSupabaseError(payload) }
+    }
+
+    return { error: null }
+  } catch {
+    return { error: "Unable to reach Supabase" }
   }
 }
 

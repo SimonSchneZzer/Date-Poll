@@ -1,6 +1,6 @@
 "use client"
 
-import { Link2, Plus, Trash2, UserPlus, UserRound, X } from "lucide-react"
+import { CalendarDays, Link2, Plus, Trash2, UserPlus, UserRound, X } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
 import {
   mergeAccountAndTrackedPolls,
@@ -110,49 +111,58 @@ function PollListSection({
   onRemovePoll: (poll: DashboardPoll) => void
 }) {
   return (
-    <Card>
-      <CardHeader>
+    <Card className="h-full">
+      <CardHeader className="border-b">
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-2 pt-6">
         {polls.length === 0 ? (
           <div className="text-muted-foreground rounded-md border border-dashed px-3 py-4 text-sm">
             {emptyLabel}
           </div>
         ) : (
-          polls.map((poll) => (
-            <div key={poll.id} className="group flex items-center gap-2">
-              <Link
-                href={poll.path}
-                className="hover:bg-accent/50 flex min-w-0 flex-1 items-center justify-between rounded-md border px-3 py-2 transition-colors"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{poll.title}</p>
-                  <p className="text-muted-foreground text-xs">
-                    Last activity: {formatLastSeen(poll.lastInteractionAt)}
-                  </p>
-                </div>
-                <Badge variant="outline">
-                  {poll.role === "organizer" ? "Created" : "Joined"}
-                </Badge>
-              </Link>
-              <Button
-                type="button"
-                size="icon-xs"
-                variant={poll.role === "organizer" ? "destructive" : "ghost"}
-                aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
-                disabled={isMutatingPolls}
-                onClick={() => onRemovePoll(poll)}
-              >
-                {poll.role === "organizer" ? (
-                  <Trash2 className="size-3.5" />
-                ) : (
-                  <X className="size-3.5" />
-                )}
-              </Button>
-            </div>
-          ))
+          <TooltipProvider>
+            {polls.map((poll) => (
+              <div key={poll.id} className="group flex items-center gap-2">
+                <Link
+                  href={poll.path}
+                  className="hover:bg-accent/40 flex min-w-0 flex-1 items-center justify-between rounded-md border bg-background/70 px-3 py-2 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{poll.title}</p>
+                    <p className="text-muted-foreground text-xs">
+                      Last activity: {formatLastSeen(poll.lastInteractionAt)}
+                    </p>
+                  </div>
+                  <Badge variant="outline">
+                    {poll.role === "organizer" ? "Created" : "Joined"}
+                  </Badge>
+                </Link>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon-xs"
+                      variant={poll.role === "organizer" ? "destructive" : "ghost"}
+                      aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
+                      disabled={isMutatingPolls}
+                      onClick={() => onRemovePoll(poll)}
+                    >
+                      {poll.role === "organizer" ? (
+                        <Trash2 className="size-3.5" />
+                      ) : (
+                        <X className="size-3.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {poll.role === "organizer" ? "Delete this poll" : "Leave this poll"}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            ))}
+          </TooltipProvider>
         )}
       </CardContent>
     </Card>
@@ -351,18 +361,46 @@ export function HomePollsDashboard({
   }
 
   return (
-    <main className="p-6 md:p-10">
+    <main className="p-4 sm:p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-2xl">Date Poll</CardTitle>
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+          <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
+                Dashboard
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Date Poll</h1>
+              <p className="text-muted-foreground max-w-xl text-sm">
+                Create new polls, or join an existing one by link or ID.
+              </p>
+            </div>
+            <div className="bg-background/80 text-muted-foreground flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm backdrop-blur">
+              <CalendarDays className="size-4 shrink-0" />
+              <span className="truncate">
+                {initialUser?.email
+                  ? `Signed in: ${initialUser.email}`
+                  : `${joinedPolls.length} tracked poll${joinedPolls.length === 1 ? "" : "s"}`}
+              </span>
+            </div>
+          </div>
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <Badge variant="secondary">Created: {createdPolls.length}</Badge>
+            <Badge variant="secondary">Joined: {joinedPolls.length}</Badge>
+          </div>
+        </section>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
+            <CardTitle>Quick actions</CardTitle>
             <CardDescription>
-              Create new polls, or join an existing one by link or ID.
+              Start a poll or jump into one using a link.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             <div className="flex flex-wrap gap-2">
-              <Button asChild>
+              <Button className="w-full sm:w-auto" asChild>
                 <Link href={createPollHref}>
                   <Plus className="size-4" />
                   Create poll
@@ -376,7 +414,7 @@ export function HomePollsDashboard({
                 placeholder="Paste poll link or enter poll ID"
                 aria-label="Poll link or ID"
               />
-              <Button type="submit" variant="outline">
+              <Button type="submit" className="w-full sm:w-auto" variant="outline">
                 <Link2 className="size-4" />
                 Join poll
               </Button>
@@ -387,7 +425,7 @@ export function HomePollsDashboard({
 
         {!hasAnyPoll ? (
           <Card>
-            <CardHeader>
+            <CardHeader className="border-b">
               <CardTitle>No polls yet</CardTitle>
               <CardDescription>
                 You have not created or joined any polls yet. Create one or join with a link above.

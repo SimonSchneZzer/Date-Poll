@@ -1,7 +1,7 @@
 "use client"
 
 import { eachDayOfInterval, formatISO, startOfDay } from "date-fns"
-import { ArrowRight, Check, Copy, Plus } from "lucide-react"
+import { ArrowRight, CalendarDays, Check, Copy, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import type { DateRange } from "react-day-picker"
@@ -130,116 +130,159 @@ export function CreatePollForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create Date Poll</CardTitle>
-        <CardDescription>Pick a date range and we generate one poll option per day.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit}>
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+        <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="title">
-              Title
-            </label>
-            <Input
-              id="title"
-              required
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Date Poll"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="description">
-              Description (optional)
-            </label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Any trip context for participants"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Date range</label>
-            <DateRangePicker value={dateRange} onChange={setDateRange} />
-            <p className="text-muted-foreground text-xs">
-              Generated options: {options.length > 0 ? options.length : "none selected"}
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.18em] uppercase">
+              New poll
             </p>
-            {options.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {options.map((option) => (
-                  <Badge key={option} variant="outline">
-                    {option}
-                  </Badge>
-                ))}
-              </div>
-            ) : null}
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Create Date Poll</h1>
+            <p className="text-muted-foreground max-w-xl text-sm">
+              Pick a date range and we generate one poll option per day.
+            </p>
           </div>
+          <div className="bg-background/80 text-muted-foreground flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm backdrop-blur">
+            <CalendarDays className="size-4 shrink-0" />
+            <span>{options.length} date option{options.length === 1 ? "" : "s"} selected</span>
+          </div>
+        </div>
+      </section>
 
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
+            <CardTitle>Poll details</CardTitle>
+            <CardDescription>Define title, optional context and the date range.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <form className="space-y-4" onSubmit={onSubmit}>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="title">
+                  Title
+                </label>
+                <Input
+                  id="title"
+                  required
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Date Poll"
+                />
+              </div>
 
-          {!result ? (
-            <Button type="submit" disabled={isLoading}>
-              <Plus className="size-4" />
-              {isLoading ? "Creating..." : "Create poll"}
-            </Button>
-          ) : null}
-        </form>
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="description">
+                  Description (optional)
+                </label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Any trip context for participants"
+                />
+              </div>
 
-        {result ? (
-          <div className="mt-6 rounded-lg border p-4">
-            <p className="mb-3 text-sm font-medium">Share</p>
-            <TooltipProvider>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Input readOnly value={shareUrl} className="text-xs" aria-label="Share link" />
-                <div className="flex gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        aria-label="Go to poll"
-                        onClick={() => router.push(result.path)}
-                      >
-                        <ArrowRight className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Open the poll page</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        aria-label="Copy link"
-                        onClick={copyShareUrl}
-                      >
-                        {copyState === "copied" ? (
-                          <Check className="size-4" />
-                        ) : (
-                          <Copy className="size-4" />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {copyState === "copied"
-                        ? "Link copied"
-                        : copyState === "failed"
-                          ? "Could not copy link"
-                          : "Copy share link"}
-                    </TooltipContent>
-                  </Tooltip>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Date range</label>
+                <DateRangePicker value={dateRange} onChange={setDateRange} />
+                <p className="text-muted-foreground text-xs">
+                  Generated options: {options.length > 0 ? options.length : "none selected"}
+                </p>
+              </div>
+
+              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+              {!result ? (
+                <Button type="submit" className="w-full sm:w-auto" disabled={isLoading}>
+                  <Plus className="size-4" />
+                  {isLoading ? "Creating..." : "Create poll"}
+                </Button>
+              ) : null}
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b">
+            <CardTitle>Overview</CardTitle>
+            <CardDescription>Review generated date options and share after creation.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-6">
+            {options.length > 0 ? (
+              <div className="max-h-56 overflow-auto rounded-lg border p-3">
+                <div className="flex flex-wrap gap-2">
+                  {options.map((option) => (
+                    <Badge key={option} variant="outline">
+                      {option}
+                    </Badge>
+                  ))}
                 </div>
               </div>
-            </TooltipProvider>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+            ) : (
+              <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">
+                Select a range to generate options.
+              </div>
+            )}
+
+            {result ? (
+              <div className="space-y-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">Share</p>
+                <TooltipProvider>
+                  <div className="flex flex-col gap-2">
+                    <Input readOnly value={shareUrl} className="text-xs" aria-label="Share link" />
+                    <div className="flex gap-2">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label="Go to poll"
+                            onClick={() => router.push(result.path)}
+                          >
+                            <ArrowRight className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Open the poll page</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            aria-label="Copy link"
+                            onClick={copyShareUrl}
+                          >
+                            {copyState === "copied" ? (
+                              <Check className="size-4" />
+                            ) : (
+                              <Copy className="size-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {copyState === "copied"
+                            ? "Link copied"
+                            : copyState === "failed"
+                              ? "Could not copy link"
+                              : "Copy share link"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </TooltipProvider>
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Share link appears here once the poll is created.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   )
 }

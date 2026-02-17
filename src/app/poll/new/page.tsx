@@ -13,8 +13,8 @@ export default async function NewPollPage() {
   }
 
   return (
-    <main className="p-6 md:p-10">
-      <div className="mx-auto max-w-3xl">
+    <main className="p-4 sm:p-6 md:p-10">
+      <div className="mx-auto max-w-5xl">
         <CreatePollForm />
       </div>
     </main>
