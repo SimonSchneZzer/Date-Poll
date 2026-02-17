@@ -883,29 +883,28 @@ export function AppShell({
             </Button>
 
             {initialUser ? (
-              <Button type="button" size="sm" variant="outline" className="w-full justify-start" asChild>
-                <Link href="/settings" onClick={onNavigate}>
-                  <Settings className="size-4" />
-                  Settings
-                </Link>
-              </Button>
-            ) : null}
-
-            {initialUser ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className="w-full justify-start"
-                disabled={isSigningOut}
-                onClick={() => {
-                  onNavigate?.()
-                  void signOut()
-                }}
-              >
-                <LogOut className="size-4" />
-                {isSigningOut ? "Logging out..." : "Log out"}
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" size="sm" variant="outline" className="w-full justify-center" asChild>
+                  <Link href="/settings" onClick={onNavigate}>
+                    <Settings className="size-4" />
+                    Settings
+                  </Link>
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="w-full justify-center"
+                  disabled={isSigningOut}
+                  onClick={() => {
+                    onNavigate?.()
+                    void signOut()
+                  }}
+                >
+                  <LogOut className="size-4" />
+                  {isSigningOut ? "Logging out..." : "Log out"}
+                </Button>
+              </div>
             ) : null}
           </div>
         </div>
