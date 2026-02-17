@@ -8,6 +8,22 @@ import {
   signUpWithPassword,
 } from "@/lib/auth/supabase-auth"
 
+function getRegisterErrorStatus(error: string): number {
+  if (/unable to reach supabase|not configured/i.test(error)) {
+    return 503
+  }
+
+  if (/too many|rate limit/i.test(error)) {
+    return 429
+  }
+
+  if (/already registered|already exists|user already registered/i.test(error)) {
+    return 409
+  }
+
+  return 400
+}
+
 export async function POST(request: Request) {
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
@@ -39,7 +55,8 @@ export async function POST(request: Request) {
   })
 
   if (!result.data) {
-    return NextResponse.json({ error: result.error }, { status: 400 })
+    const error = result.error ?? "Sign up failed"
+    return NextResponse.json({ error }, { status: getRegisterErrorStatus(error) })
   }
 
   const session = extractSessionFromSignUp(result.data)

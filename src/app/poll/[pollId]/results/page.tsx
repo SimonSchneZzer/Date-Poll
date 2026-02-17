@@ -7,8 +7,13 @@ import { PollResultsView } from "@/components/date-poll/PollResultsView"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
-import { getParticipantVotesForUser, getPoll, isPollOrganizer } from "@/lib/date-poll/store"
-import { hasVotedInPoll, VOTED_POLLS_COOKIE } from "@/lib/date-poll/vote-cookie"
+import { GUEST_PARTICIPANT_COOKIE, parseGuestToken } from "@/lib/date-poll/guest-cookie"
+import {
+  getParticipantVotesForGuest,
+  getParticipantVotesForUser,
+  getPoll,
+  isPollOrganizer,
+} from "@/lib/date-poll/store"
 
 export const dynamic = "force-dynamic"
 
@@ -26,14 +31,15 @@ export default async function PollResultsPage({
 
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const [existingVote, canManageVotes] = currentUser
-    ? await Promise.all([
-        getParticipantVotesForUser({ pollId, userId: currentUser.id }),
-        isPollOrganizer({ pollId, userId: currentUser.id }),
-      ])
-    : [null, false]
-  const guestHasVoted = hasVotedInPoll(cookieStore.get(VOTED_POLLS_COOKIE)?.value, pollId)
-  const canViewResults = canManageVotes || existingVote !== null || guestHasVoted
+  const guestToken = parseGuestToken(cookieStore.get(GUEST_PARTICIPANT_COOKIE)?.value)
+  const [existingVote, canManageVotes, guestVote] = await Promise.all([
+    currentUser ? getParticipantVotesForUser({ pollId, userId: currentUser.id }) : Promise.resolve(null),
+    currentUser ? isPollOrganizer({ pollId, userId: currentUser.id }) : Promise.resolve(false),
+    !currentUser && guestToken
+      ? getParticipantVotesForGuest({ pollId, guestToken })
+      : Promise.resolve(null),
+  ])
+  const canViewResults = canManageVotes || existingVote !== null || guestVote !== null
 
   if (!canViewResults) {
     redirect(`/poll/${pollId}?error=vote_required`)

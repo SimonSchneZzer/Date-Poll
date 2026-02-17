@@ -97,7 +97,7 @@ export function RegisterForm({ nextPath, nextPathLabel, configured, initialError
               id="fullName"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              placeholder="Max Mustermann"
+              placeholder="Jane Doe"
             />
           </div>
           <div className="space-y-2">

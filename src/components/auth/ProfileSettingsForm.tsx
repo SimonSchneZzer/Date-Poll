@@ -1,6 +1,7 @@
 "use client"
 
 import { Loader2, LogOut, Save, Settings, Trash2, UserRound } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,7 @@ type DeleteResponse = {
 }
 
 export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
+  const router = useRouter()
   const [fullName, setFullName] = useState(initialUser.fullName ?? "")
   const [email, setEmail] = useState(initialUser.email ?? "")
   const [newPassword, setNewPassword] = useState("")
@@ -80,6 +82,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
       }
 
       setProfileMessage(payload?.message ?? "Profile updated")
+      router.refresh()
     } catch {
       setProfileError("Could not save profile")
     } finally {
@@ -122,6 +125,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
       setNewPassword("")
       setConfirmPassword("")
       setPasswordMessage("Password updated")
+      router.refresh()
     } catch {
       setPasswordError("Could not update password")
     } finally {

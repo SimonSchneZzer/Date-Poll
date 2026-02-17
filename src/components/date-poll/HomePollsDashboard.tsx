@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarDays, Link2, Plus, Trash2, UserPlus, UserRound, X } from "lucide-react"
+import { CalendarDays, Link2, LogIn, Plus, Trash2, UserPlus, UserRound, X } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
@@ -188,12 +188,14 @@ export function HomePollsDashboard({
   const [pendingGuestJoinPath, setPendingGuestJoinPath] = useState<string | null>(null)
   const [isMutatingPolls, setIsMutatingPolls] = useState(false)
   const [removeConfirmState, setRemoveConfirmState] = useState<RemoveConfirmState>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
   const createPollHref = initialUser
     ? getCreatePollPath()
     : `/login?next=${encodeURIComponent(normalizeNextPath(getCreatePollPath()))}`
   const registerHref = `/register?next=${encodeURIComponent(
     normalizeNextPath(pendingGuestJoinPath ?? "/")
   )}`
+  const loginHref = `/login?next=${encodeURIComponent(normalizeNextPath(pendingGuestJoinPath ?? "/"))}`
 
   useEffect(() => {
     setAccountPolls(initialAccountPolls)
@@ -307,6 +309,7 @@ export function HomePollsDashboard({
   function requestRemovePoll(poll: DashboardPoll) {
     if (isMutatingPolls) return
 
+    setRemoveError(null)
     setRemoveConfirmState({
       pollId: poll.id,
       pollTitle: poll.title,
@@ -314,10 +317,26 @@ export function HomePollsDashboard({
     })
   }
 
-  async function removePoll(pollId: string) {
+  async function readMutationError(response: Response, fallback: string): Promise<string> {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; errors?: string[] }
+      | null
+
+    if (payload?.errors && Array.isArray(payload.errors) && payload.errors.length > 0) {
+      return payload.errors.join(". ")
+    }
+
+    if (payload?.error) {
+      return payload.error
+    }
+
+    return fallback
+  }
+
+  async function removePoll(pollId: string): Promise<boolean> {
     if (!initialUser) {
       removeTrackedPoll(pollId)
-      return
+      return true
     }
 
     const response = await fetch(`/api/polls/mine?pollId=${encodeURIComponent(pollId)}`, {
@@ -327,11 +346,13 @@ export function HomePollsDashboard({
     if (response.status === 401) {
       setAccountPolls([])
       router.refresh()
-      return
+      setRemoveError("Your session has expired. Please sign in again.")
+      return false
     }
 
     if (!response.ok) {
-      return
+      setRemoveError(await readMutationError(response, "Could not update poll membership."))
+      return false
     }
 
     const payload = (await response.json().catch(() => null)) as
@@ -346,17 +367,21 @@ export function HomePollsDashboard({
 
     removeTrackedPoll(pollId)
     router.refresh()
+    return true
   }
 
   async function confirmRemovePoll() {
     if (!removeConfirmState || isMutatingPolls) return
 
     setIsMutatingPolls(true)
+    setRemoveError(null)
     try {
-      await removePoll(removeConfirmState.pollId)
+      const isSuccess = await removePoll(removeConfirmState.pollId)
+      if (isSuccess) {
+        setRemoveConfirmState(null)
+      }
     } finally {
       setIsMutatingPolls(false)
-      setRemoveConfirmState(null)
     }
   }
 
@@ -464,15 +489,21 @@ export function HomePollsDashboard({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Join as guest or create an account</DialogTitle>
+            <DialogTitle>Join as guest, sign in, or create an account</DialogTitle>
             <DialogDescription>
-              You can continue without an account and still vote, or create an account to keep your joined polls across devices.
+              Continue without an account, sign in to use your existing profile, or register to keep joined polls across devices.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={continueAsGuest}>
               <UserRound className="size-4" />
               Continue without account
+            </Button>
+            <Button type="button" variant="outline" asChild>
+              <Link href={loginHref} onClick={() => setPendingGuestJoinPath(null)}>
+                <LogIn className="size-4" />
+                Sign in
+              </Link>
             </Button>
             <Button type="button" asChild>
               <Link href={registerHref} onClick={() => setPendingGuestJoinPath(null)}>
@@ -489,6 +520,7 @@ export function HomePollsDashboard({
         onOpenChange={(open) => {
           if (!open && !isMutatingPolls) {
             setRemoveConfirmState(null)
+            setRemoveError(null)
           }
         }}
       >
@@ -503,12 +535,16 @@ export function HomePollsDashboard({
                 : `Leave "${removeConfirmState?.pollTitle}"? You can join again with the link later.`}
             </DialogDescription>
           </DialogHeader>
+          {removeError ? <p className="text-sm text-destructive">{removeError}</p> : null}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               disabled={isMutatingPolls}
-              onClick={() => setRemoveConfirmState(null)}
+              onClick={() => {
+                setRemoveConfirmState(null)
+                setRemoveError(null)
+              }}
             >
               Cancel
             </Button>

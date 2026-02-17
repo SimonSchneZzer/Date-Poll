@@ -8,7 +8,6 @@ import {
   setGuestTokenCookie,
 } from "@/lib/date-poll/guest-cookie"
 import { upsertParticipantVotes } from "@/lib/date-poll/store"
-import { setVotedPollCookie, VOTED_POLLS_COOKIE } from "@/lib/date-poll/vote-cookie"
 
 export async function POST(
   request: NextRequest,
@@ -47,12 +46,6 @@ export async function POST(
   if (!user && guestToken) {
     setGuestTokenCookie(response, guestToken)
   }
-
-  setVotedPollCookie({
-    response,
-    existingCookieValue: request.cookies.get(VOTED_POLLS_COOKIE)?.value,
-    pollId,
-  })
 
   return response
 }

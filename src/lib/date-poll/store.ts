@@ -106,10 +106,10 @@ function mapVotePersistenceError(error: string): string[] {
     /Participant_pollId_normalizedName_key/i.test(error) ||
     (/duplicate key value/i.test(error) && /normalizedname/i.test(error))
   ) {
-    return ["Diesen Namen gibt es schon. Bitte verwende einen anderen Namen."]
+    return ["This name already exists in this poll. Please choose another name."]
   }
 
-  return ["Could not save vote. Contact Admin"]
+  return ["Could not save vote. Please try again."]
 }
 
 async function parseJsonResponse(response: Response): Promise<unknown> {
@@ -555,6 +555,54 @@ export async function getParticipantVotesForUser(args: {
   }
 }
 
+export async function getParticipantVotesForGuest(args: {
+  pollId: string
+  guestToken: string
+}): Promise<{ fullName: string; votes: Record<string, VoteStatus> } | null> {
+  const normalizedPrefix = `${GUEST_NORMALIZED_PREFIX}:${args.guestToken}:`
+  const participantParams = new URLSearchParams({
+    select: "id,fullName,updatedAt",
+    pollId: `eq.${args.pollId}`,
+    normalizedName: `like.${normalizedPrefix}*`,
+    order: "updatedAt.desc",
+    limit: "1",
+  })
+
+  const participantResult = await supabaseDbFetch<Array<{ id: string; fullName: string }>>(
+    `Participant?${participantParams.toString()}`,
+    { method: "GET" }
+  )
+
+  const participantRows = throwIfDbError(participantResult)
+  const participant = participantRows[0]
+
+  if (!participant) {
+    return null
+  }
+
+  const voteParams = new URLSearchParams({
+    select: "pollOptionId,status",
+    participantId: `eq.${participant.id}`,
+  })
+
+  const voteResult = await supabaseDbFetch<Array<{ pollOptionId: string; status: DbVoteStatus }>>(
+    `Vote?${voteParams.toString()}`,
+    { method: "GET" }
+  )
+
+  const voteRows = throwIfDbError(voteResult)
+  const votes: Record<string, VoteStatus> = {}
+
+  for (const voteRow of voteRows) {
+    votes[voteRow.pollOptionId] = dbStatusToVoteStatus(voteRow.status)
+  }
+
+  return {
+    fullName: participant.fullName,
+    votes,
+  }
+}
+
 export async function upsertParticipantVotes(args: {
   pollId: string
   fullName: string
@@ -588,7 +636,7 @@ export async function upsertParticipantVotes(args: {
   ])
 
   if (pollResult.error || optionsResult.error || participantsResult.error) {
-    return { errors: ["Could not save vote. Contact Admin"] }
+    return { errors: ["Could not save vote. Please try again."] }
   }
 
   const pollRows = pollResult.data ?? []
@@ -675,7 +723,7 @@ export async function upsertParticipantVotes(args: {
 
     return { poll: updatedPoll }
   } catch {
-    return { errors: ["Could not save vote. Contact Admin"] }
+    return { errors: ["Could not save vote. Please try again."] }
   }
 }
 

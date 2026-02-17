@@ -19,7 +19,11 @@ type LoginPageProps = {
 function mapLoginError(error: string | undefined): string | null {
   if (!error) return null
 
-  return decodeURIComponent(error).replace(/_/g, " ")
+  try {
+    return decodeURIComponent(error).replace(/_/g, " ")
+  } catch {
+    return error.replace(/_/g, " ")
+  }
 }
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {

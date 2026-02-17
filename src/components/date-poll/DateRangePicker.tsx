@@ -1,6 +1,5 @@
 "use client"
 
-import { format } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 import { useEffect, useState } from "react"
 import type { DateRange } from "react-day-picker"
@@ -20,6 +19,10 @@ type DateRangePickerProps = {
   placeholder?: string
 }
 
+function formatLocalizedDate(date: Date, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat(undefined, options).format(date)
+}
+
 function getRangeLabel(args: {
   value: DateRange | undefined
   placeholder: string
@@ -32,19 +35,21 @@ function getRangeLabel(args: {
   }
 
   if (!value.to) {
-    return format(value.from, compact ? "d MMM yyyy" : "PPP")
+    return compact
+      ? formatLocalizedDate(value.from, { day: "numeric", month: "short", year: "numeric" })
+      : formatLocalizedDate(value.from, { dateStyle: "medium" })
   }
 
   if (!compact) {
-    return `${format(value.from, "PPP")} - ${format(value.to, "PPP")}`
+    return `${formatLocalizedDate(value.from, { dateStyle: "medium" })} - ${formatLocalizedDate(value.to, { dateStyle: "medium" })}`
   }
 
-  const sameYear = format(value.from, "yyyy") === format(value.to, "yyyy")
+  const sameYear = value.from.getFullYear() === value.to.getFullYear()
   if (sameYear) {
-    return `${format(value.from, "d MMM")} - ${format(value.to, "d MMM yyyy")}`
+    return `${formatLocalizedDate(value.from, { day: "numeric", month: "short" })} - ${formatLocalizedDate(value.to, { day: "numeric", month: "short", year: "numeric" })}`
   }
 
-  return `${format(value.from, "d MMM yyyy")} - ${format(value.to, "d MMM yyyy")}`
+  return `${formatLocalizedDate(value.from, { day: "numeric", month: "short", year: "numeric" })} - ${formatLocalizedDate(value.to, { day: "numeric", month: "short", year: "numeric" })}`
 }
 
 export function DateRangePicker({

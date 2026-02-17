@@ -1,7 +1,7 @@
 "use client"
 
 import { startOfDay } from "date-fns"
-import { BarChart3, Eraser, Loader2, Send, X } from "lucide-react"
+import { BarChart3, Eraser, Loader2, PencilLine, Send, X } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
@@ -27,6 +27,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  formatPollOptionLabel,
+  getPollOptionLocalDay,
+  getPollOptionTimestamp,
+  parsePollOptionDate,
+} from "@/lib/date-poll/date-utils"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
 
@@ -48,16 +54,6 @@ const VOTE_ACTION_LABELS: Record<VoteStatus, string> = {
   cant: "Set can't",
 }
 
-function formatOption(value: string): string {
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return value
-
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: value.includes("T") ? "short" : undefined,
-  }).format(parsedDate)
-}
-
 export function PollClientPage({
   initialPoll,
   initialFullName,
@@ -75,20 +71,28 @@ export function PollClientPage({
   const [error, setError] = useState<string | null>(initialError)
   const [isLoading, setIsLoading] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
+  const [isAutoFillDialogOpen, setIsAutoFillDialogOpen] = useState(false)
+  const [autoFillStatus, setAutoFillStatus] = useState<VoteStatus | null>(null)
   const [canViewResults, setCanViewResults] = useState(initialCanViewResults)
 
-  const optionsByDate = useMemo(
-    () =>
-      [...poll.options].sort(
-        (a, b) => new Date(a.value).getTime() - new Date(b.value).getTime()
-      ),
-    [poll.options]
-  )
+  const optionsByDate = useMemo(() => {
+    return [...poll.options].sort((a, b) => {
+      const timeA = getPollOptionTimestamp(a.value)
+      const timeB = getPollOptionTimestamp(b.value)
+      const aIsValid = !Number.isNaN(timeA)
+      const bIsValid = !Number.isNaN(timeB)
+
+      if (aIsValid && bIsValid) return timeA - timeB
+      if (aIsValid) return -1
+      if (bIsValid) return 1
+      return a.value.localeCompare(b.value)
+    })
+  }, [poll.options])
 
   const organizerTimespan = useMemo(() => {
     const dates = optionsByDate
-      .map((option) => new Date(option.value))
-      .filter((date) => !Number.isNaN(date.getTime()))
+      .map((option) => parsePollOptionDate(option.value))
+      .filter((date): date is Date => date !== null)
 
     if (dates.length === 0) return null
 
@@ -113,10 +117,11 @@ export function PollClientPage({
     return { can, maybe, cant }
   }, [poll.options, votes])
 
-  const isCompleteVote = useMemo(
-    () => poll.options.every((option) => votes[option.id]),
+  const missingOptionIds = useMemo(
+    () => poll.options.filter((option) => !votes[option.id]).map((option) => option.id),
     [poll.options, votes]
   )
+  const isCompleteVote = missingOptionIds.length === 0
   const hasAnyVoteSelection = useMemo(
     () => poll.options.some((option) => Boolean(votes[option.id])),
     [poll.options, votes]
@@ -147,10 +152,8 @@ export function PollClientPage({
 
     return poll.options
       .filter((option) => {
-        const optionDate = new Date(option.value)
-        if (Number.isNaN(optionDate.getTime())) return false
-
-        const day = startOfDay(optionDate)
+        const day = getPollOptionLocalDay(option.value)
+        if (!day) return false
         return day >= start && day <= end
       })
       .map((option) => option.id)
@@ -177,20 +180,7 @@ export function PollClientPage({
     setError(null)
   }, [rangeOptionIds, rangeStatus])
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError(null)
-
-    if (!fullName.trim()) {
-      setError("Full name is required")
-      return
-    }
-
-    if (!isCompleteVote) {
-      setError("Choose one status for every date option")
-      return
-    }
-
+  async function submitVotes(nextVotes: Record<string, VoteStatus>) {
     setIsLoading(true)
 
     try {
@@ -199,7 +189,7 @@ export function PollClientPage({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ fullName, votes }),
+        body: JSON.stringify({ fullName, votes: nextVotes }),
       })
 
       const payload = (await response.json()) as
@@ -236,6 +226,56 @@ export function PollClientPage({
     } finally {
       setIsLoading(false)
     }
+  }
+
+  function buildVotesWithMissingStatus(status: VoteStatus): Record<string, VoteStatus> {
+    const nextVotes = { ...votes }
+    for (const optionId of missingOptionIds) {
+      nextVotes[optionId] = status
+    }
+    return nextVotes
+  }
+
+  function applyMissingStatus(status: VoteStatus): Record<string, VoteStatus> {
+    const nextVotes = buildVotesWithMissingStatus(status)
+    setVotes(nextVotes)
+    setError(null)
+    return nextVotes
+  }
+
+  function applyAndKeepEditing() {
+    if (!autoFillStatus || missingOptionIds.length === 0 || isLoading) return
+
+    applyMissingStatus(autoFillStatus)
+    setAutoFillStatus(null)
+    setIsAutoFillDialogOpen(false)
+  }
+
+  function applyAndSend() {
+    if (!autoFillStatus || missingOptionIds.length === 0 || isLoading) return
+
+    const nextVotes = applyMissingStatus(autoFillStatus)
+    setAutoFillStatus(null)
+    setIsAutoFillDialogOpen(false)
+    void submitVotes(nextVotes)
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError(null)
+
+    if (!fullName.trim()) {
+      setError("Full name is required")
+      return
+    }
+
+    if (missingOptionIds.length > 0) {
+      setAutoFillStatus(null)
+      setIsAutoFillDialogOpen(true)
+      return
+    }
+
+    await submitVotes(votes)
   }
 
   function clearAllVotes() {
@@ -405,7 +445,7 @@ export function PollClientPage({
                       </TableHeader>
                       <TableBody>
                         {optionsByDate.map((option) => {
-                          const optionLabel = formatOption(option.value)
+                          const optionLabel = formatPollOptionLabel(option.value)
 
                           return (
                             <TableRow key={option.id}>
@@ -488,7 +528,7 @@ export function PollClientPage({
                     required
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
-                    placeholder="Max Mustermann"
+                    placeholder="Jane Doe"
                   />
                 </div>
 
@@ -549,6 +589,69 @@ export function PollClientPage({
                   </Button>
                   <Button type="button" variant="destructive" onClick={clearAllVotes}>
                     Clear all dates
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={isAutoFillDialogOpen}
+              onOpenChange={(open) => {
+                if (!isLoading) {
+                  if (!open) {
+                    setAutoFillStatus(null)
+                  }
+                  setIsAutoFillDialogOpen(open)
+                }
+              }}
+            >
+              <DialogContent showCloseButton={!isLoading}>
+                <DialogHeader>
+                  <DialogTitle>Finish unselected dates?</DialogTitle>
+                  <DialogDescription>
+                    You still have {missingOptionIds.length} unselected{" "}
+                    {missingOptionIds.length === 1 ? "date" : "dates"}. Choose a status first, then decide
+                    whether to keep editing or send immediately.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {VOTE_STATUS_ORDER.map((status) => (
+                    <Button
+                      key={status}
+                      type="button"
+                      variant={autoFillStatus === status ? "default" : "outline"}
+                      disabled={isLoading}
+                      onClick={() => setAutoFillStatus(status)}
+                    >
+                      <VoteStatusIcon status={status} className="size-4" />
+                      Mark as {VOTE_STATUS_LABEL[status]}
+                    </Button>
+                  ))}
+                </div>
+                {!autoFillStatus ? (
+                  <p className="text-muted-foreground text-xs">
+                    Select one status to enable the apply actions.
+                  </p>
+                ) : null}
+
+                <DialogFooter className="flex-col sm:flex-row sm:items-center sm:[&>button:first-child]:mr-auto">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isLoading || !autoFillStatus}
+                    onClick={applyAndKeepEditing}
+                  >
+                    <PencilLine className="size-4" />
+                    Apply and keep editing
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={isLoading || !autoFillStatus}
+                    onClick={applyAndSend}
+                  >
+                    <Send className="size-4" />
+                    Apply and send
                   </Button>
                 </DialogFooter>
               </DialogContent>

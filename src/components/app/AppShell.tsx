@@ -37,15 +37,6 @@ type ConfirmState =
   | { type: "all" }
   | null
 
-function resolveInitialTheme(): Theme {
-  const stored = window.localStorage.getItem("theme")
-  if (stored === "light" || stored === "dark") {
-    return stored
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-}
-
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle("dark", theme === "dark")
 }
@@ -71,6 +62,7 @@ export function AppShell({
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isMutatingPolls, setIsMutatingPolls] = useState(false)
   const [confirmState, setConfirmState] = useState<ConfirmState>(null)
+  const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
   const trackedPolls = useSyncExternalStore(
     subscribeTrackedPolls,
@@ -82,11 +74,6 @@ export function AppShell({
     ? getCreatePollPath()
     : `/login?next=${encodeURIComponent(normalizeNextPath(getCreatePollPath()))}`
   const loginHref = `/login?next=${encodeURIComponent(normalizeNextPath(pathname))}`
-
-  useEffect(() => {
-    const initialTheme = resolveInitialTheme()
-    applyTheme(initialTheme)
-  }, [])
 
   useEffect(() => {
     setIsMobileNavOpen(false)
@@ -167,6 +154,22 @@ export function AppShell({
     }
   }
 
+  async function readMutationError(response: Response, fallback: string): Promise<string> {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string; errors?: string[] }
+      | null
+
+    if (payload?.errors && Array.isArray(payload.errors) && payload.errors.length > 0) {
+      return payload.errors.join(". ")
+    }
+
+    if (payload?.error) {
+      return payload.error
+    }
+
+    return fallback
+  }
+
   function isViewingPoll(pollId: string): boolean {
     const basePath = `/poll/${pollId}`
     return pathname === basePath || pathname.startsWith(`${basePath}/`)
@@ -185,21 +188,29 @@ export function AppShell({
     router.refresh()
   }
 
-  async function removeSinglePoll(pollId: string) {
+  async function removeSinglePoll(pollId: string): Promise<boolean> {
     if (!initialUser) {
       removeTrackedPoll(pollId)
       if (isViewingPoll(pollId)) {
         redirectHome()
       }
-      return
+      return true
     }
 
     const response = await fetch(`/api/polls/mine?pollId=${encodeURIComponent(pollId)}`, {
       method: "DELETE",
     })
 
+    if (response.status === 401) {
+      setAccountPolls([])
+      router.refresh()
+      setPollMutationError("Your session has expired. Please sign in again.")
+      return false
+    }
+
     if (!response.ok) {
-      return
+      setPollMutationError(await readMutationError(response, "Could not update poll membership."))
+      return false
     }
 
     const payload = (await response.json().catch(() => null)) as
@@ -216,21 +227,31 @@ export function AppShell({
     if (isViewingPoll(pollId)) {
       redirectHome()
     }
+
+    return true
   }
 
-  async function removeAllPolls() {
+  async function removeAllPolls(): Promise<boolean> {
     if (!initialUser) {
       clearTrackedPolls()
       if (isViewingPollDetailPage()) {
         redirectHome()
       }
-      return
+      return true
     }
 
     const response = await fetch("/api/polls/mine", { method: "DELETE" })
 
+    if (response.status === 401) {
+      setAccountPolls([])
+      router.refresh()
+      setPollMutationError("Your session has expired. Please sign in again.")
+      return false
+    }
+
     if (!response.ok) {
-      return
+      setPollMutationError(await readMutationError(response, "Could not update poll membership."))
+      return false
     }
 
     const payload = (await response.json().catch(() => null)) as
@@ -247,22 +268,29 @@ export function AppShell({
     if (isViewingPollDetailPage()) {
       redirectHome()
     }
+
+    return true
   }
 
   async function confirmRemoveAction() {
     if (!confirmState || isMutatingPolls) return
 
     setIsMutatingPolls(true)
+    setPollMutationError(null)
     try {
+      let isSuccess = false
       if (confirmState.type === "single") {
-        await removeSinglePoll(confirmState.pollId)
+        isSuccess = await removeSinglePoll(confirmState.pollId)
       } else {
-        await removeAllPolls()
+        isSuccess = await removeAllPolls()
+      }
+
+      if (isSuccess) {
+        setConfirmState(null)
+        setIsMobileNavOpen(false)
       }
     } finally {
       setIsMutatingPolls(false)
-      setConfirmState(null)
-      setIsMobileNavOpen(false)
     }
   }
 
@@ -291,9 +319,9 @@ export function AppShell({
     [sidebarPolls]
   )
   const hasOwnedPolls = ownedSidebarPolls.length > 0
-  const allProjectsActionLabel = hasOwnedPolls
-    ? "Leave/Delete all projects"
-    : "Leave all projects"
+  const allPollsActionLabel = hasOwnedPolls
+    ? "Leave/Delete all polls"
+    : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
 
   function closeMobileNav() {
@@ -333,6 +361,7 @@ export function AppShell({
               aria-label={`${poll.role === "organizer" ? "Delete" : "Leave"} ${poll.title}`}
               disabled={isMutatingPolls}
               onClick={() => {
+                setPollMutationError(null)
                 setConfirmState({
                   type: "single",
                   pollId: poll.id,
@@ -453,6 +482,7 @@ export function AppShell({
               className="w-full justify-start"
               disabled={isMutatingPolls}
               onClick={() => {
+                setPollMutationError(null)
                 setConfirmState({ type: "all" })
                 onNavigate?.()
               }}
@@ -609,6 +639,7 @@ export function AppShell({
         onOpenChange={(open) => {
           if (!open && !isMutatingPolls) {
             setConfirmState(null)
+            setPollMutationError(null)
           }
         }}
       >
@@ -617,8 +648,8 @@ export function AppShell({
             <DialogTitle>
               {confirmState?.type === "all"
                 ? hasOwnedPolls
-                  ? "Delete or leave all projects?"
-                  : "Leave all projects?"
+                  ? "Delete or leave all polls?"
+                  : "Leave all polls?"
                 : confirmState?.pollRole === "organizer"
                   ? "Delete poll?"
                   : "Leave poll?"}
@@ -626,19 +657,23 @@ export function AppShell({
             <DialogDescription>
               {confirmState?.type === "all"
                 ? hasOwnedPolls
-                  ? "Creator projects will be deleted for everyone. Joined projects will be left."
-                  : "This will remove all joined projects from your sidebar."
+                  ? "Organizer polls will be deleted for everyone. Joined polls will be left."
+                  : "This will remove all joined polls from your sidebar."
                 : confirmState?.pollRole === "organizer"
                   ? `Delete "${confirmState?.pollTitle ?? "this poll"}" for everyone? This action cannot be undone.`
                   : `Leave "${confirmState?.pollTitle ?? "this poll"}"? You can join again with the link later.`}
             </DialogDescription>
           </DialogHeader>
+          {pollMutationError ? <p className="text-sm text-destructive">{pollMutationError}</p> : null}
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               disabled={isMutatingPolls}
-              onClick={() => setConfirmState(null)}
+              onClick={() => {
+                setConfirmState(null)
+                setPollMutationError(null)
+              }}
             >
               Cancel
             </Button>
@@ -651,7 +686,7 @@ export function AppShell({
               {isMutatingPolls
                 ? "Please wait..."
                 : confirmState?.type === "all"
-                  ? allProjectsActionLabel
+                  ? allPollsActionLabel
                   : confirmState?.pollRole === "organizer"
                     ? "Delete poll"
                     : "Leave poll"}

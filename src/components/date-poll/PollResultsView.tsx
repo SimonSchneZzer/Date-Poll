@@ -22,39 +22,37 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  formatPollOptionLabel,
+  getPollOptionLocalDay,
+  getPollOptionTimestamp,
+} from "@/lib/date-poll/date-utils"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
-const CONSECUTIVE_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+const CONSECUTIVE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "long",
 })
 
-function formatOption(value: string): string {
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return value
-
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: value.includes("T") ? "short" : undefined,
-  }).format(parsedDate)
-}
-
 function optionsByDate(poll: PollView): PollView["options"] {
-  return [...poll.options].sort(
-    (a, b) => new Date(a.value).getTime() - new Date(b.value).getTime()
-  )
+  return [...poll.options].sort((a, b) => {
+    const timeA = getPollOptionTimestamp(a.value)
+    const timeB = getPollOptionTimestamp(b.value)
+    const aIsValid = !Number.isNaN(timeA)
+    const bIsValid = !Number.isNaN(timeB)
+
+    if (aIsValid && bIsValid) return timeA - timeB
+    if (aIsValid) return -1
+    if (bIsValid) return 1
+    return a.value.localeCompare(b.value)
+  })
 }
 
 function getLocalDayKey(value: string): number | null {
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) return null
-
-  return new Date(
-    parsedDate.getFullYear(),
-    parsedDate.getMonth(),
-    parsedDate.getDate()
-  ).getTime()
+  const day = getPollOptionLocalDay(value)
+  if (!day) return null
+  return day.getTime()
 }
 
 type ConsecutiveRange = {
@@ -365,7 +363,7 @@ export function PollResultsView({
 
                     return (
                       <TableRow key={option.id}>
-                        <TableCell className="whitespace-normal">{formatOption(option.value)}</TableCell>
+                        <TableCell className="whitespace-normal">{formatPollOptionLabel(option.value)}</TableCell>
                         {VOTE_STATUS_ORDER.map((status) => (
                           <TableCell key={status} className="text-center font-medium">
                             {countByStatus[status]}
@@ -493,7 +491,7 @@ export function PollResultsView({
                         <div key={entry.item.option.id} className="rounded-md border bg-background/80 px-2.5 py-2">
                           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1">
                             <p className="truncate text-sm font-medium leading-tight">
-                              {formatOption(entry.item.option.value)}
+                              {formatPollOptionLabel(entry.item.option.value)}
                             </p>
                             <span className="text-muted-foreground text-[11px] whitespace-nowrap">
                               Score {entry.item.score}
@@ -541,7 +539,7 @@ export function PollResultsView({
                     <TableHead className="md:min-w-[14rem]">Participant</TableHead>
                     {sortedOptions.map((option) => (
                       <TableHead key={option.id} className="whitespace-nowrap text-center">
-                        {formatOption(option.value)}
+                        {formatPollOptionLabel(option.value)}
                       </TableHead>
                     ))}
                     {canManageVotes ? <TableHead className="w-16 text-right">Actions</TableHead> : null}

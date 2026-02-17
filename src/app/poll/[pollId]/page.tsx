@@ -3,8 +3,13 @@ import { notFound } from "next/navigation"
 
 import { PollClientPage } from "@/components/date-poll/PollClientPage"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
-import { hasVotedInPoll, VOTED_POLLS_COOKIE } from "@/lib/date-poll/vote-cookie"
-import { getParticipantVotesForUser, getPoll, isPollOrganizer } from "@/lib/date-poll/store"
+import { GUEST_PARTICIPANT_COOKIE, parseGuestToken } from "@/lib/date-poll/guest-cookie"
+import {
+  getParticipantVotesForGuest,
+  getParticipantVotesForUser,
+  getPoll,
+  isPollOrganizer,
+} from "@/lib/date-poll/store"
 
 export const dynamic = "force-dynamic"
 
@@ -33,22 +38,23 @@ export default async function PollPage({
 
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const [existingVote, isOrganizer] = currentUser
-    ? await Promise.all([
-        getParticipantVotesForUser({ pollId, userId: currentUser.id }),
-        isPollOrganizer({ pollId, userId: currentUser.id }),
-      ])
-    : [null, false]
-  const guestHasVoted = hasVotedInPoll(cookieStore.get(VOTED_POLLS_COOKIE)?.value, pollId)
-  const canViewResults = isOrganizer || existingVote !== null || guestHasVoted
+  const guestToken = parseGuestToken(cookieStore.get(GUEST_PARTICIPANT_COOKIE)?.value)
+  const [existingVote, isOrganizer, guestVote] = await Promise.all([
+    currentUser ? getParticipantVotesForUser({ pollId, userId: currentUser.id }) : Promise.resolve(null),
+    currentUser ? isPollOrganizer({ pollId, userId: currentUser.id }) : Promise.resolve(false),
+    !currentUser && guestToken
+      ? getParticipantVotesForGuest({ pollId, guestToken })
+      : Promise.resolve(null),
+  ])
+  const canViewResults = isOrganizer || existingVote !== null || guestVote !== null
 
   return (
     <main className="p-4 sm:p-6 md:p-10">
       <div className="mx-auto max-w-5xl">
         <PollClientPage
           initialPoll={poll}
-          initialFullName={currentUser?.fullName ?? existingVote?.fullName ?? ""}
-          initialVotes={existingVote?.votes}
+          initialFullName={currentUser?.fullName ?? existingVote?.fullName ?? guestVote?.fullName ?? ""}
+          initialVotes={existingVote?.votes ?? guestVote?.votes}
           initialCanViewResults={canViewResults}
           initialError={mapPollError(query.error)}
         />
