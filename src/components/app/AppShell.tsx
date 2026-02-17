@@ -62,7 +62,7 @@ const THEME_ORDER: Theme[] = ["light", "rainbow", "aurora", "graphite", "dark"]
 const THEME_LABEL: Record<Theme, string> = {
   light: "Light",
   rainbow: "Rainbow",
-  aurora: "Antilight",
+  aurora: "Nordlys",
   graphite: "Graphite",
   dark: "Dark",
 }
@@ -115,6 +115,11 @@ function getPollBadgeLabel(title: string): string {
   return `${words[0].charAt(0)}${words[1].charAt(0)}`.toUpperCase()
 }
 
+function getPollIdFromPath(path: string): string | null {
+  const match = path.match(/^\/poll\/([^/]+)/)
+  return match?.[1] ?? null
+}
+
 export function AppShell({
   children,
   initialUser,
@@ -137,7 +142,6 @@ export function AppShell({
   const [confirmState, setConfirmState] = useState<ConfirmState>(null)
   const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
-  const [isRefreshingAccountPolls, setIsRefreshingAccountPolls] = useState(false)
   const [optimisticHiddenPollIds, setOptimisticHiddenPollIds] = useState<string[]>([])
   const [isOptimisticallyClearingAll, setIsOptimisticallyClearingAll] = useState(false)
   const [theme, setTheme] = useState<Theme | null>(initialTheme)
@@ -213,7 +217,6 @@ export function AppShell({
     let cancelled = false
 
     async function fetchAccountPolls() {
-      setIsRefreshingAccountPolls(true)
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
         if (response.status === 401) {
@@ -236,10 +239,6 @@ export function AppShell({
         }
       } catch {
         // Silent fallback to existing sidebar state.
-      } finally {
-        if (!cancelled) {
-          setIsRefreshingAccountPolls(false)
-        }
       }
     }
 
@@ -569,7 +568,6 @@ export function AppShell({
     ? "Leave/Delete all polls"
     : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
-  const showSidebarPollSkeleton = isMutatingPolls && isOptimisticallyClearingAll
   const isThemeResolved = theme !== null
   const activeTheme: Theme = theme ?? "light"
   const lightDarkTargetTheme = isDarkTheme(activeTheme) ? "light" : "dark"
@@ -611,17 +609,17 @@ export function AppShell({
   }
 
   function pollClass(href: string, isCompact = false) {
+    const currentPollId = getPollIdFromPath(pathname)
+    const hrefPollId = getPollIdFromPath(href)
+    const isActive = pathname === href || (currentPollId !== null && currentPollId === hrefPollId)
+
     return cn(
       isCompact
-        ? "flex size-9 items-center justify-center rounded-md border transition-colors"
-        : "block min-w-0 flex-1 rounded-md px-3 py-2 transition-colors",
-      pathname === href
-        ? isCompact
-          ? "bg-accent text-accent-foreground border-primary/30 shadow-sm"
-          : "bg-accent text-accent-foreground"
-        : isCompact
-          ? "border-transparent hover:bg-accent/50"
-          : "hover:bg-accent/50"
+        ? "flex size-9 items-center justify-center rounded-md border transition-[border-color,color,box-shadow,background-color] duration-200"
+        : "block min-w-0 flex-1 rounded-md border px-3 py-2 transition-[border-color,color,box-shadow,background-color] duration-200",
+      isActive
+        ? "border-primary text-foreground bg-background ring-2 ring-primary/45 shadow-sm shadow-primary/25 !hover:bg-background !hover:text-foreground"
+        : "border-transparent text-foreground/90 !hover:bg-muted/55 !hover:text-foreground"
     )
   }
 
@@ -717,8 +715,6 @@ export function AppShell({
     polls: SidebarPoll[]
     bindRowRef: ReturnType<typeof useFlipListAnimation>
     emptyLabel: string
-    isLoading?: boolean
-    showSkeleton?: boolean
     onNavigate?: () => void
     isCompact?: boolean
   }) {
@@ -732,22 +728,7 @@ export function AppShell({
         >
           {args.title}
         </p>
-        {args.showSkeleton ? (
-          <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
-            {Array.from({ length: args.isCompact ? 4 : 3 }).map((_, index) => (
-              <div
-                key={`skeleton-${args.title}-${index}`}
-                className={cn("flex items-center gap-1", args.isCompact && "justify-center")}
-              >
-                {args.isCompact ? (
-                  <Skeleton className="size-9 rounded-md" />
-                ) : (
-                  <Skeleton className="h-11 flex-1 rounded-md" />
-                )}
-              </div>
-            ))}
-          </div>
-        ) : args.polls.length > 0 ? (
+        {args.polls.length > 0 ? (
           <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
             {renderPollRows({
               polls: args.polls,
@@ -755,21 +736,6 @@ export function AppShell({
               onNavigate: args.onNavigate,
               isCompact: args.isCompact,
             })}
-          </div>
-        ) : args.isLoading ? (
-          <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
-            {Array.from({ length: args.isCompact ? 3 : 2 }).map((_, index) => (
-              <div
-                key={`loading-${args.title}-${index}`}
-                className={cn("flex items-center gap-1", args.isCompact && "justify-center")}
-              >
-                {args.isCompact ? (
-                  <Skeleton className="size-9 rounded-md" />
-                ) : (
-                  <Skeleton className="h-11 flex-1 rounded-md" />
-                )}
-              </div>
-            ))}
           </div>
         ) : (
           args.isCompact ? null : (
@@ -1139,8 +1105,6 @@ export function AppShell({
                 polls: ownedSidebarPolls,
                 bindRowRef: bindOwnedPollRowRef,
                 emptyLabel: "No polls yet.",
-                isLoading: isRefreshingAccountPolls,
-                showSkeleton: showSidebarPollSkeleton,
                 isCompact: isDesktopSidebarCollapsed,
               })}
               {renderPollSection({
@@ -1148,8 +1112,6 @@ export function AppShell({
                 polls: joinedSidebarPolls,
                 bindRowRef: bindJoinedPollRowRef,
                 emptyLabel: "No joined polls yet.",
-                isLoading: isRefreshingAccountPolls,
-                showSkeleton: showSidebarPollSkeleton,
                 isCompact: isDesktopSidebarCollapsed,
               })}
             </div>
@@ -1254,8 +1216,6 @@ export function AppShell({
                     polls: ownedSidebarPolls,
                     bindRowRef: bindOwnedPollRowRef,
                     emptyLabel: "No polls yet.",
-                    isLoading: isRefreshingAccountPolls,
-                    showSkeleton: showSidebarPollSkeleton,
                     onNavigate: closeMobileNav,
                   })}
                   {renderPollSection({
@@ -1263,8 +1223,6 @@ export function AppShell({
                     polls: joinedSidebarPolls,
                     bindRowRef: bindJoinedPollRowRef,
                     emptyLabel: "No joined polls yet.",
-                    isLoading: isRefreshingAccountPolls,
-                    showSkeleton: showSidebarPollSkeleton,
                     onNavigate: closeMobileNav,
                   })}
                 </div>

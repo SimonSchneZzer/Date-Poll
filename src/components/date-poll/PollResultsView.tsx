@@ -91,6 +91,23 @@ type DayScore = {
   score: number
 }
 
+type RankedOption = {
+  option: PollView["options"][number]
+  score: number
+}
+
+type QuickReadEntry = {
+  rank: number
+  item: RankedOption
+  group: ConsecutiveGroup | null
+}
+
+type QuickReadGroupBucket = {
+  key: string
+  group: ConsecutiveGroup | null
+  entries: QuickReadEntry[]
+}
+
 function toConsecutiveRanges(dayKeys: number[]): ConsecutiveRange[] {
   if (dayKeys.length === 0) return []
 
@@ -181,7 +198,8 @@ type ExportTable = {
   rows: string[][]
 }
 
-const QUICK_READ_DEFAULT_COUNT = 7
+const QUICK_READ_DEFAULT_GROUP_COUNT = 5
+const QUICK_READ_GROUP_PRESET_VALUES = [1, 3, 5] as const
 
 function sanitizeFileNamePart(value: string): string {
   const normalized = value
@@ -423,7 +441,7 @@ export function PollResultsView({
   const [removeVoteState, setRemoveVoteState] = useState<RemoveVoteState>(null)
   const [isRemovingVote, setIsRemovingVote] = useState(false)
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
-  const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_DEFAULT_COUNT)
+  const [quickReadGroupCount, setQuickReadGroupCount] = useState(QUICK_READ_DEFAULT_GROUP_COUNT)
   const [participantQuery, setParticipantQuery] = useState("")
   const [isParticipantColumnCollapsed, setIsParticipantColumnCollapsed] = useState(false)
 
@@ -452,7 +470,7 @@ export function PollResultsView({
     [filteredParticipants]
   )
   const bindParticipantRowRef = useFlipListAnimation(filteredParticipantIds)
-  const rankedOptions = useMemo(
+  const rankedOptions = useMemo<RankedOption[]>(
     () =>
       [...sortedOptions]
         .map((option) => ({
@@ -463,17 +481,6 @@ export function PollResultsView({
     [sortedOptions]
   )
   const highestScore = rankedOptions.length > 0 ? rankedOptions[0].score : null
-  const quickReadMaxCount = Math.max(1, rankedOptions.length)
-  const quickReadValue = Math.min(quickReadCount, quickReadMaxCount)
-  const quickReadPresetValues = useMemo(() => {
-    return Array.from(new Set([1, 5, 7, quickReadMaxCount])).filter(
-      (value) => value <= quickReadMaxCount
-    )
-  }, [quickReadMaxCount])
-  const displayedQuickReadOptions = useMemo(
-    () => rankedOptions.slice(0, quickReadValue),
-    [quickReadValue, rankedOptions]
-  )
   const dayScores = useMemo<DayScore[]>(() => {
     const uniqueDayScores = new Set<string>()
     const values: DayScore[] = []
@@ -509,14 +516,8 @@ export function PollResultsView({
 
     return dayScoreToGroup
   }, [consecutiveGroups])
-  const groupedQuickReadOptions = useMemo(() => {
-    type QuickReadEntry = {
-      rank: number
-      item: (typeof displayedQuickReadOptions)[number]
-      group: ConsecutiveGroup | null
-    }
-
-    const entries: QuickReadEntry[] = displayedQuickReadOptions.map((item, index) => ({
+  const allQuickReadGroups = useMemo<QuickReadGroupBucket[]>(() => {
+    const entries: QuickReadEntry[] = rankedOptions.map((item, index) => ({
       rank: index + 1,
       item,
       group: (() => {
@@ -526,14 +527,7 @@ export function PollResultsView({
       })(),
     }))
 
-    const groupedEntries = new Map<
-      string,
-      {
-        key: string
-        group: ConsecutiveGroup | null
-        entries: QuickReadEntry[]
-      }
-    >()
+    const groupedEntries = new Map<string, QuickReadGroupBucket>()
 
     for (const entry of entries) {
       const key = entry.group ? `group-${entry.group.groupNumber}` : `option-${entry.item.option.id}`
@@ -553,10 +547,23 @@ export function PollResultsView({
     return Array.from(groupedEntries.values()).sort(
       (groupA, groupB) => groupA.entries[0].rank - groupB.entries[0].rank
     )
-  }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
+  }, [consecutiveGroupByDayScore, rankedOptions])
+  const quickReadMaxGroupCount = allQuickReadGroups.length > 0 ? allQuickReadGroups.length : 1
+  const quickReadGroupValue =
+    allQuickReadGroups.length === 0
+      ? 0
+      : Math.min(quickReadGroupCount, quickReadMaxGroupCount)
+  const displayedQuickReadGroups = useMemo(
+    () => allQuickReadGroups.slice(0, quickReadGroupValue),
+    [allQuickReadGroups, quickReadGroupValue]
+  )
+  const displayedQuickReadEntries = useMemo(
+    () => displayedQuickReadGroups.flatMap((groupedOptions) => groupedOptions.entries),
+    [displayedQuickReadGroups]
+  )
   const groupedQuickReadKeys = useMemo(
-    () => groupedQuickReadOptions.map((groupedOptions) => groupedOptions.key),
-    [groupedQuickReadOptions]
+    () => displayedQuickReadGroups.map((groupedOptions) => groupedOptions.key),
+    [displayedQuickReadGroups]
   )
   const bindQuickReadGroupRef = useFlipListAnimation(groupedQuickReadKeys)
   const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
@@ -608,16 +615,16 @@ export function PollResultsView({
     () => ({
       title: `${pollState.title} - Insights`,
       headers: ["Rank", "Option", "Score", "Can", "Maybe", "Can't"],
-      rows: displayedQuickReadOptions.map((item, index) => [
-        String(index + 1),
-        formatPollOptionLabel(item.option.value),
-        String(item.score),
-        String(item.option.canCount),
-        String(item.option.maybeCount),
-        String(item.option.cantCount),
+      rows: displayedQuickReadEntries.map((entry) => [
+        String(entry.rank),
+        formatPollOptionLabel(entry.item.option.value),
+        String(entry.item.score),
+        String(entry.item.option.canCount),
+        String(entry.item.option.maybeCount),
+        String(entry.item.option.cantCount),
       ]),
     }),
-    [displayedQuickReadOptions, pollState.title]
+    [displayedQuickReadEntries, pollState.title]
   )
 
   function notifyExport(message: string) {
@@ -628,21 +635,23 @@ export function PollResultsView({
     })
   }
 
-  function updateQuickReadCount(nextCount: number) {
-    const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxCount)
-    if (nextValue === quickReadCount) return
-    setQuickReadCount(nextValue)
+  function updateQuickReadGroupCount(nextCount: number) {
+    if (allQuickReadGroups.length === 0) return
+
+    const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxGroupCount)
+    if (nextValue === quickReadGroupCount) return
+    setQuickReadGroupCount(nextValue)
   }
 
-  function handleQuickReadSliderChange(rawValue: string) {
+  function handleQuickReadGroupSliderChange(rawValue: string) {
     const parsedValue = Number.parseInt(rawValue, 10)
     if (Number.isNaN(parsedValue)) return
-    updateQuickReadCount(parsedValue)
+    updateQuickReadGroupCount(parsedValue)
   }
 
-  function handleQuickReadStep(direction: "less" | "more") {
-    const nextCount = direction === "less" ? quickReadValue - 1 : quickReadValue + 1
-    updateQuickReadCount(nextCount)
+  function handleQuickReadGroupStep(direction: "less" | "more") {
+    const nextCount = direction === "less" ? quickReadGroupValue - 1 : quickReadGroupValue + 1
+    updateQuickReadGroupCount(nextCount)
   }
 
   async function confirmRemoveVotes() {
@@ -805,7 +814,7 @@ export function PollResultsView({
                 />
               </div>
               <div className="pr-1">
-                <CardDescription>Quick read of the strongest options.</CardDescription>
+                <CardDescription>Quick read of the strongest groups.</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -813,35 +822,52 @@ export function PollResultsView({
             <div className="space-y-2 rounded-xl border bg-gradient-to-br from-background via-muted/25 to-background p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-0.5">
-                  <p className="text-xs font-semibold tracking-wide uppercase">Quick read items</p>
-                  <p className="text-muted-foreground text-[11px]">How many top options should be highlighted.</p>
+                  <p className="text-xs font-semibold tracking-wide uppercase">Quick read groups</p>
+                  <p className="text-muted-foreground text-[11px]">
+                    How many top groups should be highlighted.
+                  </p>
                 </div>
                 <Badge variant="secondary" className="text-[11px]">
-                  {rankedOptions.length === 0 ? (
+                  {allQuickReadGroups.length === 0 ? (
                     "0 / 0"
                   ) : (
                     <>
-                      <AnimatedCount value={quickReadValue} /> /{" "}
-                      <AnimatedCount value={rankedOptions.length} />
+                      <AnimatedCount value={quickReadGroupValue} /> /{" "}
+                      <AnimatedCount value={allQuickReadGroups.length} />
                     </>
                   )}
                 </Badge>
               </div>
 
               <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr gap-1.5">
-                {quickReadPresetValues.map((value) => (
+                {QUICK_READ_GROUP_PRESET_VALUES.map((value) => (
                   <Button
                     key={value}
                     type="button"
                     size="sm"
-                    variant={quickReadValue === value ? "default" : "outline"}
+                    variant={quickReadGroupValue === value ? "default" : "outline"}
                     className="h-7 w-full min-w-0 px-2 text-[11px]"
-                    disabled={rankedOptions.length === 0}
-                    onClick={() => updateQuickReadCount(value)}
+                    aria-label={`Show top ${value} ${value === 1 ? "group" : "groups"}`}
+                    disabled={allQuickReadGroups.length === 0 || value > allQuickReadGroups.length}
+                    onClick={() => updateQuickReadGroupCount(value)}
                   >
-                    {value === quickReadMaxCount ? "All" : `Top ${value}`}
+                    Top {value}
                   </Button>
                 ))}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={
+                    allQuickReadGroups.length > 0 && quickReadGroupValue === allQuickReadGroups.length
+                      ? "default"
+                      : "outline"
+                  }
+                  className="h-7 w-full min-w-0 px-2 text-[11px]"
+                  disabled={allQuickReadGroups.length === 0}
+                  onClick={() => updateQuickReadGroupCount(allQuickReadGroups.length)}
+                >
+                  All
+                </Button>
               </div>
 
               <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5">
@@ -850,22 +876,22 @@ export function PollResultsView({
                   size="sm"
                   variant="outline"
                   className="h-7 min-w-12 px-2 text-[11px] whitespace-nowrap"
-                  disabled={rankedOptions.length === 0 || quickReadValue <= 1}
-                  onClick={() => handleQuickReadStep("less")}
+                  disabled={allQuickReadGroups.length === 0 || quickReadGroupValue <= 1}
+                  onClick={() => handleQuickReadGroupStep("less")}
                 >
                   Less
                 </Button>
-                <label htmlFor="quick-read-slider" className="sr-only">
-                  Number of quick read items
+                <label htmlFor="quick-read-group-slider" className="sr-only">
+                  Number of quick read groups
                 </label>
                 <input
-                  id="quick-read-slider"
+                  id="quick-read-group-slider"
                   type="range"
                   min={1}
-                  max={quickReadMaxCount}
-                  value={quickReadValue}
-                  disabled={rankedOptions.length === 0}
-                  onChange={(event) => handleQuickReadSliderChange(event.target.value)}
+                  max={quickReadMaxGroupCount}
+                  value={quickReadGroupValue}
+                  disabled={allQuickReadGroups.length === 0}
+                  onChange={(event) => handleQuickReadGroupSliderChange(event.target.value)}
                   className="accent-primary h-1.5 w-full min-w-0 cursor-pointer disabled:cursor-not-allowed"
                 />
                 <Button
@@ -873,18 +899,20 @@ export function PollResultsView({
                   size="sm"
                   variant="outline"
                   className="h-7 min-w-12 px-2 text-[11px] whitespace-nowrap"
-                  disabled={rankedOptions.length === 0 || quickReadValue >= quickReadMaxCount}
-                  onClick={() => handleQuickReadStep("more")}
+                  disabled={
+                    allQuickReadGroups.length === 0 || quickReadGroupValue >= quickReadMaxGroupCount
+                  }
+                  onClick={() => handleQuickReadGroupStep("more")}
                 >
                   More
                 </Button>
               </div>
             </div>
 
-            {displayedQuickReadOptions.length === 0 ? (
+            {displayedQuickReadGroups.length === 0 ? (
               <p className="text-muted-foreground text-sm">No options available yet.</p>
             ) : (
-              groupedQuickReadOptions.map((groupedOptions) => (
+              displayedQuickReadGroups.map((groupedOptions) => (
                 <div
                   key={groupedOptions.key}
                   ref={bindQuickReadGroupRef(groupedOptions.key)}
