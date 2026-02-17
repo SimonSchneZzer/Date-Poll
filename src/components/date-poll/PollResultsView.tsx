@@ -1,6 +1,6 @@
 "use client"
 
-import { Loader2, Trash2 } from "lucide-react"
+import { Loader2, Search, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -165,7 +166,18 @@ export function PollResultsView({
   const [isRemovingVote, setIsRemovingVote] = useState(false)
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
   const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_ALL_ITEMS)
+  const [participantQuery, setParticipantQuery] = useState("")
   const sortedOptions = useMemo(() => optionsByDate(pollState), [pollState])
+  const normalizedParticipantQuery = participantQuery.trim().toLocaleLowerCase()
+  const filteredParticipants = useMemo(() => {
+    if (!normalizedParticipantQuery) {
+      return pollState.participants
+    }
+
+    return pollState.participants.filter((participant) =>
+      participant.fullName.toLocaleLowerCase().includes(normalizedParticipantQuery)
+    )
+  }, [normalizedParticipantQuery, pollState.participants])
   const rankedOptions = useMemo(
     () =>
       [...sortedOptions]
@@ -268,6 +280,7 @@ export function PollResultsView({
       (groupA, groupB) => groupA.entries[0].rank - groupB.entries[0].rank
     )
   }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
+  const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
 
   function updateQuickReadCount(nextCount: number) {
     const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxCount)
@@ -532,11 +545,29 @@ export function PollResultsView({
         </CardHeader>
         <CardContent className="pt-6">
           <TooltipProvider>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                <Input
+                  value={participantQuery}
+                  onChange={(event) => setParticipantQuery(event.target.value)}
+                  placeholder="Search participants"
+                  aria-label="Search participants"
+                  className="pl-9"
+                />
+              </div>
+              <p className="text-muted-foreground text-xs">
+                {filteredParticipants.length} of {pollState.participants.length} participants
+              </p>
+            </div>
+
             <div className="overflow-x-auto rounded-xl border">
               <Table className="w-full min-w-[44rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="md:min-w-[14rem]">Participant</TableHead>
+                    <TableHead className="sticky left-0 z-20 min-w-[12rem] border-r bg-background md:min-w-[14rem]">
+                      Participant
+                    </TableHead>
                     {sortedOptions.map((option) => (
                       <TableHead key={option.id} className="whitespace-nowrap text-center">
                         {formatPollOptionLabel(option.value)}
@@ -548,17 +579,22 @@ export function PollResultsView({
                 <TableBody>
                   {pollState.participants.length === 0 ? (
                     <TableRow>
-                      <TableCell
-                        colSpan={sortedOptions.length + 1 + (canManageVotes ? 1 : 0)}
-                        className="text-muted-foreground"
-                      >
+                      <TableCell colSpan={participantColSpan} className="text-muted-foreground">
                         No votes yet.
                       </TableCell>
                     </TableRow>
+                  ) : filteredParticipants.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={participantColSpan} className="text-muted-foreground">
+                        No participants match your search.
+                      </TableCell>
+                    </TableRow>
                   ) : (
-                    pollState.participants.map((participant) => (
+                    filteredParticipants.map((participant) => (
                       <TableRow key={participant.id}>
-                        <TableCell className="whitespace-nowrap">{participant.fullName}</TableCell>
+                        <TableCell className="sticky left-0 z-10 border-r bg-background whitespace-nowrap">
+                          {participant.fullName}
+                        </TableCell>
                         {sortedOptions.map((option) => {
                           const vote = participant.votes[option.id]
                           return (
