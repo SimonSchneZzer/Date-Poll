@@ -1,5 +1,5 @@
 import { cookies } from "next/headers"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 import { PollClientPage } from "@/components/date-poll/PollClientPage"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
@@ -26,7 +26,7 @@ export default async function PollPage({
   searchParams,
 }: {
   params: Promise<{ pollId: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; edit?: string }>
 }) {
   const { pollId } = await params
   const query = await searchParams
@@ -47,6 +47,11 @@ export default async function PollPage({
       : Promise.resolve(null),
   ])
   const canViewResults = isOrganizer || existingVote !== null || guestVote !== null
+  const forceEditMode = query.edit === "1"
+
+  if (canViewResults && !forceEditMode) {
+    redirect(`/poll/${pollId}/results`)
+  }
 
   return (
     <main className="p-4 sm:p-6 md:p-10">

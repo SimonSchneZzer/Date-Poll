@@ -707,12 +707,12 @@ export function PollResultsView({
         <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <div className="space-y-1">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                 <CardTitle className="leading-snug">Results overview</CardTitle>
                 <TableExportMenu
                   table={overviewExportTable}
                   fileBaseName={`${exportBaseName}-overview`}
-                  triggerClassName="justify-self-end self-start"
+                  triggerClassName="justify-self-end self-center"
                   onExport={notifyExport}
                 />
               </div>
@@ -775,12 +775,12 @@ export function PollResultsView({
         <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start app-enter-soft">
           <CardHeader className="border-b">
             <div className="space-y-1">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                 <CardTitle className="leading-snug">Insights</CardTitle>
                 <TableExportMenu
                   table={insightsExportTable}
                   fileBaseName={`${exportBaseName}-insights`}
-                  triggerClassName="justify-self-end self-start"
+                  triggerClassName="justify-self-end self-center"
                   onExport={notifyExport}
                 />
               </div>
@@ -944,12 +944,12 @@ export function PollResultsView({
       <Card className="overflow-hidden app-enter-soft">
         <CardHeader className="border-b">
           <div className="space-y-1">
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
               <CardTitle className="leading-snug">Who voted what</CardTitle>
               <TableExportMenu
                 table={participantExportTable}
                 fileBaseName={`${exportBaseName}-vote-matrix`}
-                triggerClassName="justify-self-end self-start"
+                triggerClassName="justify-self-end self-center"
                 onExport={notifyExport}
               />
             </div>

@@ -66,7 +66,7 @@ export default async function PollResultsPage({
               )}
             </div>
             <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
-              <Link href={`/poll/${poll.id}`}>
+              <Link href={`/poll/${poll.id}?edit=1`}>
                 <PencilLine className="size-4" />
                 Edit your vote
               </Link>
