@@ -546,7 +546,7 @@ export function PollResultsView({
         <CardContent className="pt-6">
           <TooltipProvider>
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative w-full sm:max-w-xs">
+              <div className="relative w-full sm:max-w-xs" suppressHydrationWarning>
                 <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <Input
                   value={participantQuery}
@@ -554,6 +554,7 @@ export function PollResultsView({
                   placeholder="Search participants"
                   aria-label="Search participants"
                   className="pl-9"
+                  suppressHydrationWarning
                 />
               </div>
               <p className="text-muted-foreground text-xs">
