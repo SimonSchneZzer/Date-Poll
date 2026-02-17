@@ -548,12 +548,18 @@ export function PollResultsView({
   )
   const bindQuickReadGroupRef = useFlipListAnimation(groupedQuickReadKeys)
   const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
-  const participantColumnHeadClass = isParticipantColumnCollapsed
-    ? "sticky left-0 z-20 w-11 min-w-11 border-r bg-background px-0 text-center"
-    : "sticky left-0 z-20 w-[9rem] min-w-[9rem] border-r bg-background sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
-  const participantColumnCellClass = isParticipantColumnCollapsed
-    ? "sticky left-0 z-10 w-11 min-w-11 border-r bg-background px-0 text-center"
-    : "sticky left-0 z-10 w-[9rem] min-w-[9rem] border-r bg-background whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
+  const participantColumnHeadClass = cn(
+    "sticky left-0 z-20 border-r bg-background transition-[width,min-width,padding] duration-200 ease-out motion-reduce:transition-none",
+    isParticipantColumnCollapsed
+      ? "w-11 min-w-11 px-0 text-center"
+      : "w-[9rem] min-w-[9rem] sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
+  )
+  const participantColumnCellClass = cn(
+    "sticky left-0 z-10 border-r bg-background transition-[width,min-width,padding] duration-200 ease-out motion-reduce:transition-none",
+    isParticipantColumnCollapsed
+      ? "w-11 min-w-11 px-0 text-center"
+      : "w-[9rem] min-w-[9rem] whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
+  )
   const exportBaseName = useMemo(() => {
     const titlePart = sanitizeFileNamePart(pollState.title)
     const idPart = sanitizeFileNamePart(pollState.id).slice(0, 8)
