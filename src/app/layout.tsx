@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { cookies } from "next/headers";
 import { AppShell } from "@/components/app/AppShell";
-import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth";
-import { getPollSummariesForUser } from "@/lib/date-poll/store";
+import { getRequestUserAndPolls } from "@/lib/date-poll/request-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,11 +24,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies()
-  const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const initialAccountPolls = currentUser
-    ? await getPollSummariesForUser(currentUser.id)
-    : []
+  const { user: currentUser, polls: initialAccountPolls } = await getRequestUserAndPolls()
 
   return (
     <html lang="en">

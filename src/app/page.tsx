@@ -1,17 +1,8 @@
-import { cookies } from "next/headers"
-
 import { HomePollsDashboard } from "@/components/date-poll/HomePollsDashboard"
-import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
-import { getPollSummariesForUser } from "@/lib/date-poll/store"
+import { getRequestUserAndPolls } from "@/lib/date-poll/request-context"
 
 export default async function Home() {
-  const cookieStore = await cookies()
-  const currentUser = await getCurrentUserFromCookies(cookieStore)
-  const initialAccountPolls = currentUser
-    ? await getPollSummariesForUser(currentUser.id)
-    : []
+  const { user: currentUser, polls: initialAccountPolls } = await getRequestUserAndPolls()
 
-  return (
-    <HomePollsDashboard initialUser={currentUser} initialAccountPolls={initialAccountPolls} />
-  )
+  return <HomePollsDashboard initialUser={currentUser} initialAccountPolls={initialAccountPolls} />
 }

@@ -10,12 +10,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const payload = (await request.json()) as {
-    title?: string
-    description?: string
-    timezone?: string
-    options?: string[]
-    optionsText?: string
+  const payload = (await request.json().catch(() => null)) as
+    | {
+        title?: string
+        description?: string
+        options?: string[]
+        optionsText?: string
+      }
+    | null
+
+  if (!payload || typeof payload !== "object") {
+    return NextResponse.json({ errors: ["Invalid request body"] }, { status: 400 })
   }
 
   const options = Array.isArray(payload.options)
@@ -25,7 +30,6 @@ export async function POST(request: NextRequest) {
   const result = await createPoll({
     title: payload.title ?? "",
     description: payload.description,
-    timezone: payload.timezone ?? "Europe/Vienna",
     options,
     creatorUserId: user.id,
   })

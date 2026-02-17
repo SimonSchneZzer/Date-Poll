@@ -1,5 +1,19 @@
+"use client"
+
+import { Loader2, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { PollView } from "@/lib/date-poll/types"
 
@@ -19,8 +33,66 @@ function optionsByDate(poll: PollView): PollView["options"] {
   )
 }
 
-export function PollResultsView({ poll }: { poll: PollView }) {
-  const sortedOptions = optionsByDate(poll)
+type RemoveVoteState = {
+  participantId: string
+  participantName: string
+} | null
+
+export function PollResultsView({
+  poll,
+  canManageVotes = false,
+}: {
+  poll: PollView
+  canManageVotes?: boolean
+}) {
+  const [pollState, setPollState] = useState(poll)
+  const [removeVoteState, setRemoveVoteState] = useState<RemoveVoteState>(null)
+  const [isRemovingVote, setIsRemovingVote] = useState(false)
+  const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
+  const sortedOptions = useMemo(() => optionsByDate(pollState), [pollState])
+
+  async function confirmRemoveVotes() {
+    if (!removeVoteState || isRemovingVote) return
+
+    setIsRemovingVote(true)
+    setRemoveVoteError(null)
+
+    try {
+      const response = await fetch(
+        `/api/polls/${pollState.id}/participants/${encodeURIComponent(removeVoteState.participantId)}`,
+        {
+          method: "DELETE",
+        }
+      )
+
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; errors?: string[] }
+        | { poll?: PollView }
+        | null
+
+      if (!response.ok) {
+        if (payload && "errors" in payload && payload.errors?.length) {
+          setRemoveVoteError(payload.errors.join(". "))
+        } else if (payload && "error" in payload && payload.error) {
+          setRemoveVoteError(payload.error)
+        } else {
+          setRemoveVoteError("Could not remove votes")
+        }
+        return
+      }
+
+      if (payload && "poll" in payload && payload.poll) {
+        setPollState(payload.poll)
+        setRemoveVoteState(null)
+      } else {
+        setRemoveVoteError("Could not remove votes")
+      }
+    } catch {
+      setRemoveVoteError("Could not remove votes")
+    } finally {
+      setIsRemovingVote(false)
+    }
+  }
 
   return (
     <Card>
@@ -51,7 +123,7 @@ export function PollResultsView({ poll }: { poll: PollView }) {
         </Table>
 
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">Participants: {poll.participants.length}</Badge>
+          <Badge variant="outline">Participants: {pollState.participants.length}</Badge>
           <Badge variant="outline">Options: {sortedOptions.length}</Badge>
         </div>
 
@@ -64,17 +136,21 @@ export function PollResultsView({ poll }: { poll: PollView }) {
                 {sortedOptions.map((option) => (
                   <TableHead key={option.id}>{formatOption(option.value)}</TableHead>
                 ))}
+                {canManageVotes ? <TableHead className="text-right">Actions</TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {poll.participants.length === 0 ? (
+              {pollState.participants.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={sortedOptions.length + 1} className="text-muted-foreground">
+                  <TableCell
+                    colSpan={sortedOptions.length + 1 + (canManageVotes ? 1 : 0)}
+                    className="text-muted-foreground"
+                  >
                     No votes yet.
                   </TableCell>
                 </TableRow>
               ) : (
-                poll.participants.map((participant) => (
+                pollState.participants.map((participant) => (
                   <TableRow key={participant.id}>
                     <TableCell>{participant.fullName}</TableCell>
                     {sortedOptions.map((option) => {
@@ -85,6 +161,26 @@ export function PollResultsView({ poll }: { poll: PollView }) {
                         </TableCell>
                       )
                     })}
+                    {canManageVotes ? (
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-destructive hover:text-destructive"
+                          aria-label={`Remove votes from ${participant.fullName}`}
+                          onClick={() => {
+                            setRemoveVoteState({
+                              participantId: participant.id,
+                              participantName: participant.fullName,
+                            })
+                            setRemoveVoteError(null)
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               )}
@@ -92,6 +188,51 @@ export function PollResultsView({ poll }: { poll: PollView }) {
           </Table>
         </div>
       </CardContent>
+
+      <Dialog
+        open={removeVoteState !== null}
+        onOpenChange={(open) => {
+          if (!open && !isRemovingVote) {
+            setRemoveVoteState(null)
+            setRemoveVoteError(null)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!isRemovingVote}>
+          <DialogHeader>
+            <DialogTitle>Remove votes?</DialogTitle>
+            <DialogDescription>
+              {`Remove all votes from "${removeVoteState?.participantName ?? "this participant"}"? They can submit a new vote later.`}
+            </DialogDescription>
+          </DialogHeader>
+          {removeVoteError ? <p className="text-sm text-destructive">{removeVoteError}</p> : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isRemovingVote}
+              onClick={() => setRemoveVoteState(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isRemovingVote}
+              onClick={confirmRemoveVotes}
+            >
+              {isRemovingVote ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove votes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

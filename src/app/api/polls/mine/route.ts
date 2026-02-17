@@ -27,12 +27,19 @@ export async function DELETE(request: NextRequest) {
 
   const pollId = new URL(request.url).searchParams.get("pollId")?.trim()
 
-  if (pollId) {
-    await leavePollForUser({ pollId, userId: user.id })
-  } else {
-    await leaveAllPollsForUser(user.id)
-  }
+  try {
+    if (pollId) {
+      const removed = await leavePollForUser({ pollId, userId: user.id })
+      if (!removed) {
+        return NextResponse.json({ error: "Poll not found" }, { status: 404 })
+      }
+    } else {
+      await leaveAllPollsForUser(user.id)
+    }
 
-  const polls = await getPollSummariesForUser(user.id)
-  return NextResponse.json({ polls })
+    const polls = await getPollSummariesForUser(user.id)
+    return NextResponse.json({ polls })
+  } catch {
+    return NextResponse.json({ error: "Could not update poll membership" }, { status: 500 })
+  }
 }

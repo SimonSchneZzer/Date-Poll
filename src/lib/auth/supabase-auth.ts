@@ -169,6 +169,15 @@ export async function signInWithPassword(args: {
   })
 }
 
+export async function refreshSessionWithToken(
+  refreshToken: string
+): Promise<AuthApiResponse<SupabaseAuthSession>> {
+  return supabaseFetch<SupabaseAuthSession>("/auth/v1/token?grant_type=refresh_token", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+}
+
 export async function signUpWithPassword(args: {
   email: string
   password: string
@@ -268,12 +277,24 @@ export async function getUserFromAccessToken(
 
 export async function getCurrentUserFromCookies(cookieReader: CookieReader): Promise<AuthUser | null> {
   const accessToken = cookieReader.get(ACCESS_TOKEN_COOKIE)?.value
-  if (!accessToken) {
+  if (accessToken) {
+    const result = await getUserFromAccessToken(accessToken)
+    if (result.data) {
+      return result.data
+    }
+  }
+
+  const refreshToken = cookieReader.get(REFRESH_TOKEN_COOKIE)?.value
+  if (!refreshToken) {
     return null
   }
 
-  const result = await getUserFromAccessToken(accessToken)
-  return result.data
+  const refreshResult = await refreshSessionWithToken(refreshToken)
+  if (!refreshResult.data) {
+    return null
+  }
+
+  return mapSessionUser(refreshResult.data)
 }
 
 export function setAuthCookies(response: NextResponse, session: SupabaseAuthSession) {

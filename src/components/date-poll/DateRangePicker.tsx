@@ -20,6 +20,33 @@ type DateRangePickerProps = {
   placeholder?: string
 }
 
+function getRangeLabel(args: {
+  value: DateRange | undefined
+  placeholder: string
+  compact: boolean
+}): string {
+  const { value, placeholder, compact } = args
+
+  if (!value?.from) {
+    return compact ? "Select range or day" : placeholder
+  }
+
+  if (!value.to) {
+    return format(value.from, compact ? "d MMM yyyy" : "PPP")
+  }
+
+  if (!compact) {
+    return `${format(value.from, "PPP")} - ${format(value.to, "PPP")}`
+  }
+
+  const sameYear = format(value.from, "yyyy") === format(value.to, "yyyy")
+  if (sameYear) {
+    return `${format(value.from, "d MMM")} - ${format(value.to, "d MMM yyyy")}`
+  }
+
+  return `${format(value.from, "d MMM yyyy")} - ${format(value.to, "d MMM yyyy")}`
+}
+
 export function DateRangePicker({
   value,
   onChange,
@@ -50,6 +77,16 @@ export function DateRangePicker({
       : undefined
 
   const visibleMonths = isSmallViewport ? 1 : numberOfMonths
+  const fullLabel = getRangeLabel({
+    value,
+    placeholder,
+    compact: false,
+  })
+  const displayLabel = getRangeLabel({
+    value,
+    placeholder,
+    compact: isSmallViewport,
+  })
 
   return (
     <Popover>
@@ -57,22 +94,13 @@ export function DateRangePicker({
         <Button
           variant="outline"
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full min-w-0 justify-start overflow-hidden text-left font-normal",
             !value?.from && "text-muted-foreground"
           )}
+          title={fullLabel}
         >
-          <CalendarIcon className="mr-2 size-4" />
-          {value?.from ? (
-            value.to ? (
-              <>
-                {format(value.from, "PPP")} - {format(value.to, "PPP")}
-              </>
-            ) : (
-              format(value.from, "PPP")
-            )
-          ) : (
-            placeholder
-          )}
+          <CalendarIcon className="mr-2 size-4 shrink-0" />
+          <span className="min-w-0 truncate">{displayLabel}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent

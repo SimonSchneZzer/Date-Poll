@@ -11,21 +11,20 @@ export type TrackedPoll = {
 
 const STORAGE_KEY = "date-poll:tracked-polls"
 const EVENT_NAME = "date-poll:tracked-polls-updated"
-const EMPTY_TRACKED_POLLS: TrackedPoll[] = []
 
 let cachedRawValue: string | null | undefined
-let cachedSnapshot: TrackedPoll[] = EMPTY_TRACKED_POLLS
+let cachedSnapshot: TrackedPoll[] = []
 
 function isBrowser() {
   return typeof window !== "undefined"
 }
 
 function safeParseTrackedPolls(value: string | null): TrackedPoll[] {
-  if (!value) return EMPTY_TRACKED_POLLS
+  if (!value) return []
 
   try {
     const parsed = JSON.parse(value) as unknown
-    if (!Array.isArray(parsed)) return EMPTY_TRACKED_POLLS
+    if (!Array.isArray(parsed)) return []
 
     return parsed
       .filter((item): item is TrackedPoll => {
@@ -42,7 +41,7 @@ function safeParseTrackedPolls(value: string | null): TrackedPoll[] {
       })
       .sort(sortTrackedPolls)
   } catch {
-    return EMPTY_TRACKED_POLLS
+    return []
   }
 }
 
@@ -60,7 +59,7 @@ function dispatchTrackedPollsUpdate() {
 }
 
 export function getTrackedPollsSnapshot(): TrackedPoll[] {
-  if (!isBrowser()) return EMPTY_TRACKED_POLLS
+  if (!isBrowser()) return []
 
   const rawValue = window.localStorage.getItem(STORAGE_KEY)
   if (rawValue === cachedRawValue && cachedSnapshot) {
@@ -73,7 +72,7 @@ export function getTrackedPollsSnapshot(): TrackedPoll[] {
 }
 
 export function getTrackedPollsServerSnapshot(): TrackedPoll[] {
-  return EMPTY_TRACKED_POLLS
+  return []
 }
 
 export function subscribeTrackedPolls(onStoreChange: () => void) {
@@ -154,6 +153,6 @@ export function clearTrackedPolls() {
 
   window.localStorage.removeItem(STORAGE_KEY)
   cachedRawValue = null
-  cachedSnapshot = EMPTY_TRACKED_POLLS
+  cachedSnapshot = []
   dispatchTrackedPollsUpdate()
 }

@@ -14,7 +14,6 @@ type PollRow = {
   id: string
   title: string
   description: string | null
-  timezone: string
   creatorUserId: string | null
   createdAt: string
 }
@@ -51,6 +50,8 @@ type SupabaseDbResponse<T> =
       error: string
     }
 
+type SupabaseRpcArgs = Record<string, unknown>
+
 type PollRecord = {
   poll: PollRow
   options: PollOptionRow[]
@@ -60,6 +61,9 @@ type PollRecord = {
 
 const MISSING_TABLE_IN_SCHEMA_CACHE_RE =
   /Could not find the table 'public\.[^']+' in the schema cache/i
+
+const AUTH_NORMALIZED_PREFIX = "auth"
+const GUEST_NORMALIZED_PREFIX = "guest"
 
 function getSupabaseDbConfig() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -143,6 +147,13 @@ async function supabaseDbFetch<T>(path: string, init: RequestInit): Promise<Supa
   }
 }
 
+function supabaseDbRpc<T>(name: string, args: SupabaseRpcArgs): Promise<SupabaseDbResponse<T>> {
+  return supabaseDbFetch<T>(`rpc/${name}`, {
+    method: "POST",
+    body: JSON.stringify(args),
+  })
+}
+
 function throwIfDbError<T>(result: SupabaseDbResponse<T>): T {
   if (result.error !== null) {
     if (MISSING_TABLE_IN_SCHEMA_CACHE_RE.test(result.error)) {
@@ -168,6 +179,52 @@ function isMissingSchemaCacheTableError(error: unknown): boolean {
 function asInFilter(values: string[]): string {
   const escaped = values.map((value) => `"${value.replaceAll('"', '\\"')}"`)
   return `in.(${escaped.join(",")})`
+}
+
+function getParticipantNormalizedName(args: {
+  normalizedName: string
+  authUserId?: string
+  guestToken?: string
+}): string {
+  if (args.authUserId) {
+    return `${AUTH_NORMALIZED_PREFIX}:${args.authUserId}:${args.normalizedName}`
+  }
+
+  if (args.guestToken) {
+    return `${GUEST_NORMALIZED_PREFIX}:${args.guestToken}:${args.normalizedName}`
+  }
+
+  return args.normalizedName
+}
+
+function parseRpcNumber(data: unknown): number | null {
+  if (typeof data === "number") {
+    return data
+  }
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return 0
+
+    const first = data[0]
+    if (typeof first === "number") return first
+    if (!first || typeof first !== "object") return null
+
+    for (const value of Object.values(first as Record<string, unknown>)) {
+      if (typeof value === "number") return value
+    }
+
+    return null
+  }
+
+  if (!data || typeof data !== "object") {
+    return null
+  }
+
+  for (const value of Object.values(data as Record<string, unknown>)) {
+    if (typeof value === "number") return value
+  }
+
+  return null
 }
 
 function voteStatusToDbStatus(status: VoteStatus): DbVoteStatus {
@@ -237,7 +294,6 @@ function mapToView(record: PollRecord): PollView {
     id: record.poll.id,
     title: record.poll.title,
     description: record.poll.description ?? undefined,
-    timezone: record.poll.timezone,
     createdAt: new Date(record.poll.createdAt).toISOString(),
     options: optionStats,
     participants: record.participants
@@ -252,7 +308,7 @@ function mapToView(record: PollRecord): PollView {
 
 async function getPollRecord(pollId: string): Promise<PollRecord | null> {
   const pollParams = new URLSearchParams({
-    select: "id,title,description,timezone,creatorUserId,createdAt",
+    select: "id,title,description,creatorUserId,createdAt",
     id: `eq.${pollId}`,
     limit: "1",
   })
@@ -321,7 +377,6 @@ export async function createPoll(
   const cleanedInput: PollCreateInput = {
     title: input.title.trim(),
     description: input.description?.trim(),
-    timezone: input.timezone.trim() || "Europe/Vienna",
     options: input.options,
     creatorUserId: input.creatorUserId,
   }
@@ -343,7 +398,6 @@ export async function createPoll(
       id: pollId,
       title: cleanedInput.title,
       description: cleanedInput.description || null,
-      timezone: cleanedInput.timezone,
       creatorUserId: cleanedInput.creatorUserId || null,
       createdAt: now,
       updatedAt: now,
@@ -425,6 +479,25 @@ export async function hasUserVotedOnPoll(args: {
   return rows.length > 0
 }
 
+export async function isPollOrganizer(args: {
+  pollId: string
+  userId: string
+}): Promise<boolean> {
+  const params = new URLSearchParams({
+    select: "id",
+    id: `eq.${args.pollId}`,
+    creatorUserId: `eq.${args.userId}`,
+    limit: "1",
+  })
+
+  const result = await supabaseDbFetch<Array<{ id: string }>>(`Poll?${params.toString()}`, {
+    method: "GET",
+  })
+
+  const rows = throwIfDbError(result)
+  return rows.length > 0
+}
+
 export async function getParticipantVotesForUser(args: {
   pollId: string
   userId: string
@@ -475,6 +548,7 @@ export async function upsertParticipantVotes(args: {
   pollId: string
   fullName: string
   authUserId?: string
+  guestToken?: string
   votes: Record<string, unknown>
 }): Promise<{ poll?: PollView; errors?: string[] }> {
   const pollParams = new URLSearchParams({
@@ -503,7 +577,7 @@ export async function upsertParticipantVotes(args: {
   ])
 
   if (pollResult.error || optionsResult.error || participantsResult.error) {
-    return { errors: ["Could not save vote"] }
+    return { errors: ["Could not save vote. Contact Admin"] }
   }
 
   const pollRows = pollResult.data ?? []
@@ -527,82 +601,59 @@ export async function upsertParticipantVotes(args: {
   }
 
   const normalizedName = normalizeParticipantName(args.fullName)
-  const existingParticipant = args.authUserId
-    ? participantRows.find((participant) => participant.authUserId === args.authUserId)
-    : participantRows.find((participant) => participant.normalizedName === normalizedName)
-
-  const participantId = existingParticipant?.id ?? randomUUID()
-  const now = new Date().toISOString()
-
-  const participantMutation = existingParticipant
-    ? supabaseDbFetch<ParticipantRow[]>(
-        `Participant?${new URLSearchParams({ id: `eq.${existingParticipant.id}` }).toString()}`,
-        {
-          method: "PATCH",
-          headers: {
-            Prefer: "return=representation",
-          },
-          body: JSON.stringify({
-            fullName: args.fullName.trim(),
-            normalizedName,
-            authUserId: args.authUserId ?? existingParticipant.authUserId ?? null,
-            updatedAt: now,
-          }),
-        }
-      )
-    : supabaseDbFetch<ParticipantRow[]>("Participant", {
-        method: "POST",
-        headers: {
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify({
-          id: participantId,
-          pollId: poll.id,
-          fullName: args.fullName.trim(),
-          normalizedName,
-          authUserId: args.authUserId ?? null,
-          createdAt: now,
-          updatedAt: now,
-        }),
+  const guestScopedNormalizedName = args.guestToken
+    ? getParticipantNormalizedName({
+        normalizedName,
+        guestToken: args.guestToken,
       })
-
-  const participantMutationResult = await participantMutation
-
-  if (participantMutationResult.error) {
-    return { errors: ["Could not save vote"] }
-  }
-
-  const deleteVotesResult = await supabaseDbFetch<VoteRow[]>(
-    `Vote?${new URLSearchParams({ participantId: `eq.${participantId}` }).toString()}`,
-    {
-      method: "DELETE",
-      headers: {
-        Prefer: "return=representation",
-      },
-    }
-  )
-
-  if (deleteVotesResult.error) {
-    return { errors: ["Could not save vote"] }
-  }
-
-  const votePayload = optionIds.map((optionId) => ({
-    id: randomUUID(),
-    pollOptionId: optionId,
-    participantId,
-    status: voteStatusToDbStatus(args.votes[optionId] as VoteStatus),
-  }))
-
-  const insertVotesResult = await supabaseDbFetch<VoteRow[]>("Vote", {
-    method: "POST",
-    headers: {
-      Prefer: "return=representation",
-    },
-    body: JSON.stringify(votePayload),
+    : undefined
+  const participantNormalizedName = getParticipantNormalizedName({
+    normalizedName,
+    authUserId: args.authUserId,
+    guestToken: args.guestToken,
   })
 
-  if (insertVotesResult.error) {
-    return { errors: ["Could not save vote"] }
+  const existingParticipant = args.authUserId
+    ? participantRows.find((participant) => participant.authUserId === args.authUserId) ??
+      (guestScopedNormalizedName
+        ? participantRows.find((participant) => participant.normalizedName === guestScopedNormalizedName)
+        : undefined)
+    : participantRows.find((participant) => participant.normalizedName === participantNormalizedName) ??
+      (args.guestToken
+        ? participantRows.find(
+            (participant) =>
+              participant.authUserId === null && participant.normalizedName === normalizedName
+          )
+        : undefined)
+
+  const participantId = existingParticipant?.id ?? randomUUID()
+  const voteOptionIds: string[] = []
+  const voteStatuses: DbVoteStatus[] = []
+  const voteIds: string[] = []
+
+  for (const optionId of optionIds) {
+    voteOptionIds.push(optionId)
+    voteStatuses.push(voteStatusToDbStatus(args.votes[optionId] as VoteStatus))
+    voteIds.push(randomUUID())
+  }
+
+  const replaceVotesResult = await supabaseDbRpc<unknown>("replace_participant_votes", {
+    p_participant_id: participantId,
+    p_poll_id: poll.id,
+    p_full_name: args.fullName.trim(),
+    p_normalized_name: participantNormalizedName,
+    p_auth_user_id: args.authUserId ?? null,
+    p_vote_option_ids: voteOptionIds,
+    p_vote_statuses: voteStatuses,
+    p_vote_ids: voteIds,
+  })
+
+  if (replaceVotesResult.error) {
+    if (/poll not found/i.test(replaceVotesResult.error)) {
+      return { errors: ["Poll not found"] }
+    }
+
+    return { errors: ["Could not save vote. Contact Admin"] }
   }
 
   try {
@@ -613,8 +664,63 @@ export async function upsertParticipantVotes(args: {
 
     return { poll: updatedPoll }
   } catch {
-    return { errors: ["Could not save vote"] }
+    return { errors: ["Could not save vote. Contact Admin"] }
   }
+}
+
+export async function removeParticipantVotesAsOrganizer(args: {
+  pollId: string
+  participantId: string
+  organizerUserId: string
+}): Promise<{ poll?: PollView; errors?: string[] }> {
+  const canManagePoll = await isPollOrganizer({
+    pollId: args.pollId,
+    userId: args.organizerUserId,
+  })
+
+  if (!canManagePoll) {
+    return { errors: ["Not allowed"] }
+  }
+
+  const participantResult = await supabaseDbFetch<Array<{ id: string }>>(
+    `Participant?${new URLSearchParams({
+      select: "id",
+      id: `eq.${args.participantId}`,
+      pollId: `eq.${args.pollId}`,
+      limit: "1",
+    }).toString()}`,
+    { method: "GET" }
+  )
+
+  const participantRows = throwIfDbError(participantResult)
+  if (participantRows.length === 0) {
+    return { errors: ["Vote not found"] }
+  }
+
+  const deleteParticipantResult = await supabaseDbFetch<Array<{ id: string }>>(
+    `Participant?${new URLSearchParams({
+      id: `eq.${args.participantId}`,
+      pollId: `eq.${args.pollId}`,
+    }).toString()}`,
+    {
+      method: "DELETE",
+      headers: {
+        Prefer: "return=representation",
+      },
+    }
+  )
+
+  const deletedRows = throwIfDbError(deleteParticipantResult)
+  if (deletedRows.length === 0) {
+    return { errors: ["Vote not found"] }
+  }
+
+  const updatedPoll = await getPoll(args.pollId)
+  if (!updatedPoll) {
+    return { errors: ["Poll not found"] }
+  }
+
+  return { poll: updatedPoll }
 }
 
 export async function getPollSummariesForUser(userId: string): Promise<AccountPollSummary[]> {
@@ -770,67 +876,18 @@ export async function leavePollForUser(args: {
 }
 
 export async function leaveAllPollsForUser(userId: string): Promise<number> {
-  const [ownedPollsResult, joinedPollsResult] = await Promise.all([
-    supabaseDbFetch<Array<{ id: string }>>(
-      `Poll?${new URLSearchParams({
-        select: "id",
-        creatorUserId: `eq.${userId}`,
-      }).toString()}`,
-      { method: "GET" }
-    ),
-    supabaseDbFetch<Array<{ pollId: string }>>(
-      `Participant?${new URLSearchParams({
-        select: "pollId",
-        authUserId: `eq.${userId}`,
-      }).toString()}`,
-      { method: "GET" }
-    ),
-  ])
+  const result = await supabaseDbRpc<unknown>("leave_all_polls_for_user", {
+    p_user_id: userId,
+  })
 
-  const ownedPolls = throwIfDbError(ownedPollsResult)
-  const joinedPolls = throwIfDbError(joinedPollsResult)
-
-  const changedPollIds = new Set<string>()
-
-  for (const poll of ownedPolls) {
-    changedPollIds.add(poll.id)
+  if (result.error) {
+    throw new Error(result.error)
   }
 
-  for (const poll of joinedPolls) {
-    changedPollIds.add(poll.pollId)
+  const count = parseRpcNumber(result.data)
+  if (count === null) {
+    throw new Error("Database request failed")
   }
 
-  const deleteParticipantsResult = await supabaseDbFetch<unknown>(
-    `Participant?${new URLSearchParams({
-      authUserId: `eq.${userId}`,
-    }).toString()}`,
-    {
-      method: "DELETE",
-      headers: {
-        Prefer: "return=minimal",
-      },
-    }
-  )
-
-  if (deleteParticipantsResult.error) {
-    throw new Error(deleteParticipantsResult.error)
-  }
-
-  const deletePollsResult = await supabaseDbFetch<unknown>(
-    `Poll?${new URLSearchParams({
-      creatorUserId: `eq.${userId}`,
-    }).toString()}`,
-    {
-      method: "DELETE",
-      headers: {
-        Prefer: "return=minimal",
-      },
-    }
-  )
-
-  if (deletePollsResult.error) {
-    throw new Error(deletePollsResult.error)
-  }
-
-  return changedPollIds.size
+  return count
 }

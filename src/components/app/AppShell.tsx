@@ -116,6 +116,13 @@ export function AppShell({
     async function fetchAccountPolls() {
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
+        if (response.status === 401) {
+          if (cancelled) return
+          setAccountPolls([])
+          router.refresh()
+          return
+        }
+
         if (!response.ok) return
 
         const payload = (await response.json().catch(() => null)) as
@@ -133,11 +140,13 @@ export function AppShell({
     }
 
     fetchAccountPolls()
+    window.addEventListener("focus", fetchAccountPolls)
 
     return () => {
       cancelled = true
+      window.removeEventListener("focus", fetchAccountPolls)
     }
-  }, [initialUser, trackedPolls])
+  }, [initialUser, trackedPolls, router])
 
   function toggleTheme() {
     const nextTheme: Theme = document.documentElement.classList.contains("dark")
@@ -153,6 +162,7 @@ export function AppShell({
     setIsSigningOut(true)
     try {
       await fetch("/api/auth/logout", { method: "POST" })
+      clearTrackedPolls()
     } finally {
       window.location.href = "/login"
     }
@@ -190,11 +200,6 @@ export function AppShell({
     })
 
     if (!response.ok) {
-      setAccountPolls((current) => current.filter((poll) => poll.id !== pollId))
-      removeTrackedPoll(pollId)
-      if (isViewingPoll(pollId)) {
-        redirectHome()
-      }
       return
     }
 
@@ -226,11 +231,6 @@ export function AppShell({
     const response = await fetch("/api/polls/mine", { method: "DELETE" })
 
     if (!response.ok) {
-      setAccountPolls([])
-      clearTrackedPolls()
-      if (isViewingPollDetailPage()) {
-        redirectHome()
-      }
       return
     }
 
@@ -279,7 +279,7 @@ export function AppShell({
       id: poll.id,
       title: poll.title,
       path: poll.path,
-      role: poll.organizer ? "organizer" : "participant",
+      role: "participant" as const,
       lastInteractionAt: poll.lastInteractionAt,
     }))
   }, [accountPolls, initialUser, trackedPolls])

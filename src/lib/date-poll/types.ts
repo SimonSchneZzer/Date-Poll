@@ -10,7 +10,6 @@ export type PollOption = {
 export type PollCreateInput = {
   title: string
   description?: string
-  timezone: string
   options: string[]
   creatorUserId?: string
 }
@@ -31,7 +30,6 @@ export type PollView = {
   id: string
   title: string
   description?: string
-  timezone: string
   createdAt: string
   options: PollViewOption[]
   participants: PollViewParticipant[]

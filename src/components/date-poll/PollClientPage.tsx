@@ -1,7 +1,7 @@
 "use client"
 
 import { startOfDay } from "date-fns"
-import { BarChart3, Eraser, Loader2, Send } from "lucide-react"
+import { BarChart3, Eraser, Loader2, Send, X } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
@@ -11,6 +11,14 @@ import { DateRangePicker } from "@/components/date-poll/DateRangePicker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
@@ -52,6 +60,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
   const [rangeStatus, setRangeStatus] = useState<VoteStatus>("can")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
 
   const optionsByDate = useMemo(
     () =>
@@ -209,6 +218,14 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
     }
   }
 
+  function clearAllVotes() {
+    setSelectedRange(undefined)
+    setVotes({})
+    setRangeStatus("can")
+    setError(null)
+    setIsClearDialogOpen(false)
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -224,30 +241,41 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                 <p className="text-muted-foreground text-xs">
                   1. pick a range, 2. Choose a status. It is applied automatically.
                 </p>
-                <p className="text-muted-foreground text-xs">
-                  Organizer timespan:{" "}
-                  {organizerTimespan
-                    ? `${formatOption(organizerTimespan.from.toISOString().slice(0, 10))} - ${formatOption(
-                        organizerTimespan.to.toISOString().slice(0, 10)
-                      )}`
-                    : "not available"}
-                </p>
               </div>
 
-              <DateRangePicker
-                value={selectedRange}
-                onChange={setSelectedRange}
-                fromDate={organizerTimespan?.from}
-                toDate={organizerTimespan?.to}
-                defaultMonth={organizerTimespan?.from}
-                numberOfMonths={2}
-                placeholder="Select available range (or a single day)"
-              />
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <DateRangePicker
+                    value={selectedRange}
+                    onChange={setSelectedRange}
+                    fromDate={organizerTimespan?.from}
+                    toDate={organizerTimespan?.to}
+                    defaultMonth={organizerTimespan?.from}
+                    numberOfMonths={2}
+                    placeholder="Select available range (or a single day)"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Clear selected range"
+                  title="Clear selected range"
+                  disabled={!selectedRange?.from}
+                  onClick={() => {
+                    setSelectedRange(undefined)
+                    setError(null)
+                  }}
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 <Button
                   type="button"
                   size="sm"
+                  className="w-full sm:w-auto"
                   variant={rangeStatus === "can" ? "default" : "outline"}
                   onClick={() => setRangeStatus("can")}
                 >
@@ -256,6 +284,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                 <Button
                   type="button"
                   size="sm"
+                  className="w-full sm:w-auto"
                   variant={rangeStatus === "maybe" ? "default" : "outline"}
                   onClick={() => setRangeStatus("maybe")}
                 >
@@ -264,6 +293,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                 <Button
                   type="button"
                   size="sm"
+                  className="w-full sm:w-auto"
                   variant={rangeStatus === "cant" ? "default" : "outline"}
                   onClick={() => setRangeStatus("cant")}
                 >
@@ -272,13 +302,9 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                 <Button
                   type="button"
                   size="sm"
+                  className="w-full sm:w-auto"
                   variant="ghost"
-                  onClick={() => {
-                    setSelectedRange(undefined)
-                    setVotes({})
-                    setRangeStatus("can")
-                    setError(null)
-                  }}
+                  onClick={() => setIsClearDialogOpen(true)}
                 >
                   <Eraser className="size-3.5" />
                   Clear
@@ -376,6 +402,25 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
               </Button>
             </div>
           </form>
+
+          <Dialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Clear all selected dates?</DialogTitle>
+                <DialogDescription>
+                  This will remove all selected availability statuses for every date.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsClearDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="destructive" onClick={clearAllVotes}>
+                  Clear all dates
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </div>

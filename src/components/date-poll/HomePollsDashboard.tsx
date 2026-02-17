@@ -37,6 +37,12 @@ type DashboardPoll = {
   role: "organizer" | "participant"
 }
 
+type RemoveConfirmState = {
+  pollId: string
+  pollTitle: string
+  pollRole: DashboardPoll["role"]
+} | null
+
 function toDashboardPoll(summary: AccountPollSummary): DashboardPoll {
   return {
     id: summary.id,
@@ -171,6 +177,7 @@ export function HomePollsDashboard({
   const [joinError, setJoinError] = useState<string | null>(null)
   const [pendingGuestJoinPath, setPendingGuestJoinPath] = useState<string | null>(null)
   const [isMutatingPolls, setIsMutatingPolls] = useState(false)
+  const [removeConfirmState, setRemoveConfirmState] = useState<RemoveConfirmState>(null)
   const createPollHref = initialUser
     ? getCreatePollPath()
     : `/login?next=${encodeURIComponent(normalizeNextPath(getCreatePollPath()))}`
@@ -190,6 +197,13 @@ export function HomePollsDashboard({
     async function refresh() {
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
+        if (response.status === 401) {
+          if (cancelled) return
+          setAccountPolls([])
+          router.refresh()
+          return
+        }
+
         if (!response.ok) return
 
         const payload = (await response.json().catch(() => null)) as
@@ -206,11 +220,13 @@ export function HomePollsDashboard({
     }
 
     refresh()
+    window.addEventListener("focus", refresh)
 
     return () => {
       cancelled = true
+      window.removeEventListener("focus", refresh)
     }
-  }, [initialUser])
+  }, [initialUser, router, trackedPolls])
 
   const mergedPolls = useMemo(() => {
     if (!initialUser) return []
@@ -229,17 +245,8 @@ export function HomePollsDashboard({
         .sort(sortDashboardPolls)
     }
 
-    return trackedPolls
-      .filter((poll) => poll.organizer)
-      .map((poll) => ({
-        id: poll.id,
-        title: poll.title,
-        path: poll.path,
-        role: "organizer" as const,
-        lastInteractionAt: poll.lastInteractionAt,
-      }))
-      .sort(sortDashboardPolls)
-  }, [initialUser, mergedPolls, trackedPolls])
+    return []
+  }, [initialUser, mergedPolls])
 
   const joinedPolls = useMemo<DashboardPoll[]>(() => {
     if (initialUser) {
@@ -250,7 +257,7 @@ export function HomePollsDashboard({
     }
 
     return trackedPolls
-      .filter((poll) => poll.participant && !poll.organizer)
+      .filter((poll) => poll.participant || poll.organizer)
       .map((poll) => ({
         id: poll.id,
         title: poll.title,
@@ -287,48 +294,59 @@ export function HomePollsDashboard({
     setPendingGuestJoinPath(null)
   }
 
-  async function removePoll(poll: DashboardPoll) {
+  function requestRemovePoll(poll: DashboardPoll) {
     if (isMutatingPolls) return
 
-    const isOrganizer = poll.role === "organizer"
-    const confirmed = window.confirm(
-      isOrganizer
-        ? `Delete "${poll.title}" for everyone?`
-        : `Leave "${poll.title}"? You can join again with the link later.`
-    )
+    setRemoveConfirmState({
+      pollId: poll.id,
+      pollTitle: poll.title,
+      pollRole: poll.role,
+    })
+  }
 
-    if (!confirmed) return
+  async function removePoll(pollId: string) {
+    if (!initialUser) {
+      removeTrackedPoll(pollId)
+      return
+    }
+
+    const response = await fetch(`/api/polls/mine?pollId=${encodeURIComponent(pollId)}`, {
+      method: "DELETE",
+    })
+
+    if (response.status === 401) {
+      setAccountPolls([])
+      router.refresh()
+      return
+    }
+
+    if (!response.ok) {
+      return
+    }
+
+    const payload = (await response.json().catch(() => null)) as
+      | { polls?: AccountPollSummary[] }
+      | null
+
+    if (payload?.polls && Array.isArray(payload.polls)) {
+      setAccountPolls(payload.polls)
+    } else {
+      setAccountPolls((current) => current.filter((entry) => entry.id !== pollId))
+    }
+
+    removeTrackedPoll(pollId)
+    router.refresh()
+  }
+
+  async function confirmRemovePoll() {
+    if (!removeConfirmState || isMutatingPolls) return
 
     setIsMutatingPolls(true)
     try {
-      if (!initialUser) {
-        removeTrackedPoll(poll.id)
-        return
-      }
-
-      const response = await fetch(`/api/polls/mine?pollId=${encodeURIComponent(poll.id)}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        setAccountPolls((current) => current.filter((entry) => entry.id !== poll.id))
-        removeTrackedPoll(poll.id)
-        return
-      }
-
-      const payload = (await response.json().catch(() => null)) as
-        | { polls?: AccountPollSummary[] }
-        | null
-
-      if (payload?.polls && Array.isArray(payload.polls)) {
-        setAccountPolls(payload.polls)
-      } else {
-        setAccountPolls((current) => current.filter((entry) => entry.id !== poll.id))
-      }
-
-      removeTrackedPoll(poll.id)
+      await removePoll(removeConfirmState.pollId)
     } finally {
       setIsMutatingPolls(false)
+      setRemoveConfirmState(null)
     }
   }
 
@@ -384,7 +402,7 @@ export function HomePollsDashboard({
               polls={createdPolls}
               emptyLabel="You have not created any polls yet."
               isMutatingPolls={isMutatingPolls}
-              onRemovePoll={removePoll}
+              onRemovePoll={requestRemovePoll}
             />
             <PollListSection
               title="Joined Polls"
@@ -392,7 +410,7 @@ export function HomePollsDashboard({
               polls={joinedPolls}
               emptyLabel="You have not joined any polls yet."
               isMutatingPolls={isMutatingPolls}
-              onRemovePoll={removePoll}
+              onRemovePoll={requestRemovePoll}
             />
           </div>
         )}
@@ -423,6 +441,50 @@ export function HomePollsDashboard({
                 <UserPlus className="size-4" />
                 Create account
               </Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeConfirmState !== null}
+        onOpenChange={(open) => {
+          if (!open && !isMutatingPolls) {
+            setRemoveConfirmState(null)
+          }
+        }}
+      >
+        <DialogContent showCloseButton={!isMutatingPolls}>
+          <DialogHeader>
+            <DialogTitle>
+              {removeConfirmState?.pollRole === "organizer" ? "Delete poll?" : "Leave poll?"}
+            </DialogTitle>
+            <DialogDescription>
+              {removeConfirmState?.pollRole === "organizer"
+                ? `Delete "${removeConfirmState.pollTitle}" for everyone? This action cannot be undone.`
+                : `Leave "${removeConfirmState?.pollTitle}"? You can join again with the link later.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isMutatingPolls}
+              onClick={() => setRemoveConfirmState(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={isMutatingPolls}
+              onClick={confirmRemovePoll}
+            >
+              {isMutatingPolls
+                ? "Please wait..."
+                : removeConfirmState?.pollRole === "organizer"
+                  ? "Delete poll"
+                  : "Leave poll"}
             </Button>
           </DialogFooter>
         </DialogContent>

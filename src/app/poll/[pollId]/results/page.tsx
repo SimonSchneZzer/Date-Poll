@@ -1,10 +1,12 @@
 import Link from "next/link"
 import { PencilLine } from "lucide-react"
+import { cookies } from "next/headers"
 import { notFound } from "next/navigation"
 
 import { PollResultsView } from "@/components/date-poll/PollResultsView"
 import { Button } from "@/components/ui/button"
-import { getPoll } from "@/lib/date-poll/store"
+import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
+import { getPoll, isPollOrganizer } from "@/lib/date-poll/store"
 
 export const dynamic = "force-dynamic"
 
@@ -19,6 +21,12 @@ export default async function PollResultsPage({
   if (!poll) {
     notFound()
   }
+
+  const cookieStore = await cookies()
+  const currentUser = await getCurrentUserFromCookies(cookieStore)
+  const canManageVotes = currentUser
+    ? await isPollOrganizer({ pollId, userId: currentUser.id })
+    : false
 
   return (
     <main className="p-6 md:p-10">
@@ -38,7 +46,7 @@ export default async function PollResultsPage({
           </Button>
         </div>
 
-        <PollResultsView poll={poll} />
+        <PollResultsView poll={poll} canManageVotes={canManageVotes} />
       </div>
     </main>
   )

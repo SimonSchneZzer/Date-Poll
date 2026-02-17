@@ -16,10 +16,6 @@ export function validateCreatePollInput(input: PollCreateInput): string[] {
     errors.push("Title is required")
   }
 
-  if (!input.timezone.trim()) {
-    errors.push("Timezone is required")
-  }
-
   if (input.options.length < MIN_OPTIONS) {
     errors.push("At least two date options are required")
   }
