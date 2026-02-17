@@ -7,7 +7,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Circle,
-  Fish,
   ListX,
   LogIn,
   LogOut,
@@ -52,17 +51,16 @@ import {
 import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 import { cn } from "@/lib/utils"
 
-type Theme = "light" | "salmon" | "rainbow" | "aurora" | "graphite" | "dark"
+type Theme = "light" | "rainbow" | "aurora" | "graphite" | "dark"
 type SidebarPoll = AccountPollSummary
 type ConfirmState =
   | { type: "single"; pollId: string; pollTitle: string; pollRole: SidebarPoll["role"] }
   | { type: "all" }
   | null
 
-const THEME_ORDER: Theme[] = ["light", "salmon", "rainbow", "aurora", "graphite", "dark"]
+const THEME_ORDER: Theme[] = ["light", "rainbow", "aurora", "graphite", "dark"]
 const THEME_LABEL: Record<Theme, string> = {
   light: "Light",
-  salmon: "Salmon",
   rainbow: "Rainbow",
   aurora: "Antilight",
   graphite: "Graphite",
@@ -76,8 +74,6 @@ function isDarkTheme(theme: Theme): boolean {
 function getCurrentTheme(): Theme {
   if (document.documentElement.classList.contains("aurora")) return "aurora"
   if (document.documentElement.classList.contains("rainbow")) return "rainbow"
-  if (document.documentElement.classList.contains("salmon")) return "salmon"
-  if (document.documentElement.classList.contains("prism")) return "salmon"
   if (document.documentElement.classList.contains("graphite")) return "graphite"
   return document.documentElement.classList.contains("dark") ? "dark" : "light"
 }
@@ -89,17 +85,14 @@ function getNextLightDarkTheme(theme: Theme): Theme {
 function applyTheme(theme: Theme) {
   const root = document.documentElement
   root.classList.toggle("dark", isDarkTheme(theme))
-  root.classList.toggle("salmon", theme === "salmon")
   root.classList.toggle("rainbow", theme === "rainbow")
   root.classList.toggle("aurora", theme === "aurora")
-  root.classList.toggle("prism", false)
   root.classList.toggle("graphite", theme === "graphite")
 }
 
 function getThemeIcon(theme: Theme) {
   if (theme === "dark") return <Moon className="size-4" />
   if (theme === "rainbow") return <Rainbow className="size-4" />
-  if (theme === "salmon") return <Fish className="size-4" />
   if (theme === "aurora") return <Sparkles className="size-4" />
   if (theme === "graphite") return <Circle className="size-4" />
   return <Sun className="size-4" />

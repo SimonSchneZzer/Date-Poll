@@ -22,13 +22,12 @@ export const metadata: Metadata = {
   description: "Create date polls and collect participant availability",
 }
 
-type ThemePreference = "light" | "salmon" | "rainbow" | "aurora" | "graphite" | "dark"
+type ThemePreference = "light" | "rainbow" | "aurora" | "graphite" | "dark"
 
 function normalizeThemePreference(rawValue: string | null | undefined): ThemePreference | null {
-  const normalizedValue = rawValue === "prism" ? "salmon" : rawValue
+  const normalizedValue = rawValue
   if (
     normalizedValue === "light" ||
-    normalizedValue === "salmon" ||
     normalizedValue === "rainbow" ||
     normalizedValue === "aurora" ||
     normalizedValue === "graphite" ||
@@ -41,7 +40,6 @@ function normalizeThemePreference(rawValue: string | null | undefined): ThemePre
 
 function getThemeHtmlClassName(theme: ThemePreference | null): string {
   if (theme === "dark") return "dark"
-  if (theme === "salmon") return "salmon"
   if (theme === "rainbow") return "rainbow"
   if (theme === "aurora") return "dark aurora"
   if (theme === "graphite") return "dark graphite"
@@ -62,32 +60,26 @@ const THEME_INIT_SCRIPT = `
     };
     const isValidTheme = (value) =>
       value === "light" ||
-      value === "salmon" ||
       value === "rainbow" ||
       value === "aurora" ||
       value === "graphite" ||
       value === "dark";
     const cookieThemeRaw = readCookieTheme();
-    const normalizedCookie = cookieThemeRaw === "prism" ? "salmon" : cookieThemeRaw;
+    const normalizedCookie = cookieThemeRaw;
     const stored = window.localStorage.getItem("theme");
-    const normalizedStored = stored === "prism" ? "salmon" : stored;
+    const normalizedStored = stored;
     const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     const theme = isValidTheme(normalizedCookie) ? normalizedCookie : isValidTheme(normalizedStored) ? normalizedStored : preferred;
     const root = document.documentElement;
     root.classList.toggle("dark", theme === "dark" || theme === "graphite" || theme === "aurora");
-    root.classList.toggle("salmon", theme === "salmon");
     root.classList.toggle("rainbow", theme === "rainbow");
     root.classList.toggle("aurora", theme === "aurora");
-    root.classList.toggle("prism", false);
     root.classList.toggle("graphite", theme === "graphite");
     if (stored !== theme) {
       window.localStorage.setItem("theme", theme);
     }
     if (cookieThemeRaw !== theme) {
       document.cookie = "theme=" + encodeURIComponent(theme) + "; path=/; max-age=31536000; samesite=lax";
-    }
-    if (stored === "prism") {
-      window.localStorage.setItem("theme", "salmon");
     }
   } catch {}
 })();
