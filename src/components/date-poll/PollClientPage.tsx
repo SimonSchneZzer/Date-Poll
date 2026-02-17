@@ -37,6 +37,7 @@ import {
 } from "@/lib/date-poll/date-utils"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
+import { MAX_PARTICIPANT_NAME_LENGTH } from "@/lib/date-poll/validation"
 import { cn } from "@/lib/utils"
 
 type VotePayload = {
@@ -114,6 +115,17 @@ export function PollClientPage({
       to: startOfDay(dates[dates.length - 1]),
     }
   }, [optionsByDate])
+  const availableOptionDayKeys = useMemo(() => {
+    const dayKeys = new Set<number>()
+
+    for (const option of poll.options) {
+      const optionDay = getPollOptionLocalDay(option.value)
+      if (!optionDay) continue
+      dayKeys.add(startOfDay(optionDay).getTime())
+    }
+
+    return dayKeys
+  }, [poll.options])
 
   const voteSummary = useMemo(() => {
     let can = 0
@@ -417,6 +429,9 @@ export function PollClientPage({
                         onChange={setSelectedRange}
                         fromDate={organizerTimespan?.from}
                         toDate={organizerTimespan?.to}
+                        disabled={(day) =>
+                          !availableOptionDayKeys.has(startOfDay(day).getTime())
+                        }
                         defaultMonth={organizerTimespan?.from}
                         numberOfMonths={2}
                         placeholder="Select available range (or a single day)"
@@ -483,6 +498,9 @@ export function PollClientPage({
 
                   <p className="text-muted-foreground text-xs">
                     Tip: select a single date or a longer range, then fine-tune below if needed.
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Only dates included in this poll can be selected.
                   </p>
                 </div>
 
@@ -590,6 +608,7 @@ export function PollClientPage({
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="Jane Doe"
+                    maxLength={MAX_PARTICIPANT_NAME_LENGTH}
                   />
                 </div>
 

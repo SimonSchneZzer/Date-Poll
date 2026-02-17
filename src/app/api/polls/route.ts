@@ -24,7 +24,10 @@ export async function POST(request: NextRequest) {
   }
 
   const options = Array.isArray(payload.options)
-    ? payload.options.filter((option): option is string => typeof option === "string")
+    ? payload.options
+        .filter((option): option is string => typeof option === "string")
+        .map((option) => option.trim())
+        .filter(Boolean)
     : parseOptionsInput(payload.optionsText ?? "")
 
   const result = await createPoll({

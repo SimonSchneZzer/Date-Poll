@@ -1,13 +1,12 @@
 "use client"
 
 import { eachDayOfInterval, formatISO, startOfDay } from "date-fns"
-import { ArrowRight, CalendarDays, Check, Copy, Plus } from "lucide-react"
+import { ArrowRight, CalendarDays, Check, Copy, Plus, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import type { DateRange } from "react-day-picker"
 
 import { DateRangePicker } from "@/components/date-poll/DateRangePicker"
-import { Badge } from "@/components/ui/badge"
 import { AnimatedCount } from "@/components/ui/animated-count"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,6 +16,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath } from "@/lib/auth/supabase-auth"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
+import {
+  MAX_POLL_DESCRIPTION_LENGTH,
+  MAX_POLL_OPTIONS,
+  MAX_POLL_TITLE_LENGTH,
+  MIN_POLL_OPTIONS,
+} from "@/lib/date-poll/validation"
 import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 
 type CreateResult = {
@@ -24,38 +29,75 @@ type CreateResult = {
   path: string
 }
 
+function normalizeDateRange(range: DateRange | undefined): { start: Date; end: Date } | null {
+  if (!range?.from) return null
+
+  const from = startOfDay(range.from)
+  const to = startOfDay(range.to ?? range.from)
+
+  if (from <= to) {
+    return { start: from, end: to }
+  }
+
+  return { start: to, end: from }
+}
+
+function rangeToDateOptions(range: { start: Date; end: Date }): string[] {
+  return eachDayOfInterval({ start: range.start, end: range.end }).map((date) =>
+    formatISO(date, { representation: "date" })
+  )
+}
+
+function sortDateOptions(values: Iterable<string>): string[] {
+  return [...new Set(values)].sort((a, b) => Date.parse(a) - Date.parse(b))
+}
+
 export function CreatePollForm() {
   const router = useRouter()
   const { toast } = useToast()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [dateRange, setDateRange] = useState<DateRange>()
+  const [pendingRange, setPendingRange] = useState<DateRange>()
+  const [options, setOptions] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<CreateResult | null>(null)
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle")
   const [isLoading, setIsLoading] = useState(false)
 
-  const options = useMemo(() => {
-    if (!dateRange?.from || !dateRange.to) {
-      return []
+  const normalizedPendingRange = useMemo(
+    () => normalizeDateRange(pendingRange),
+    [pendingRange]
+  )
+  const pendingRangeOptions = useMemo(
+    () => (normalizedPendingRange ? rangeToDateOptions(normalizedPendingRange) : []),
+    [normalizedPendingRange]
+  )
+  const existingOptions = useMemo(() => new Set(options), [options])
+  const existingOptionDayKeys = useMemo(() => {
+    const dayKeys = new Set<number>()
+
+    for (const option of options) {
+      const parsed = new Date(`${option}T00:00:00`)
+      if (Number.isNaN(parsed.getTime())) continue
+      dayKeys.add(startOfDay(parsed).getTime())
     }
 
-    if (dateRange.from > dateRange.to) {
-      return []
-    }
-
-    return eachDayOfInterval({
-      start: startOfDay(dateRange.from),
-      end: startOfDay(dateRange.to),
-    }).map((date) => formatISO(date, { representation: "date" }))
-  }, [dateRange])
+    return dayKeys
+  }, [options])
+  const pendingRangeNewOptions = useMemo(
+    () => pendingRangeOptions.filter((option) => !existingOptions.has(option)),
+    [existingOptions, pendingRangeOptions]
+  )
+  const previewOptionCount = options.length + pendingRangeNewOptions.length
+  const exceedsMaxOptions = previewOptionCount > MAX_POLL_OPTIONS
+  const hasPendingRange = normalizedPendingRange !== null
+  const bindOptionBadgeRef = useFlipListAnimation(options)
 
   const shareUrl = useMemo(() => {
     if (!result) return ""
     if (typeof window === "undefined") return result.path
     return `${window.location.origin}${result.path}`
   }, [result])
-  const bindOptionBadgeRef = useFlipListAnimation(options)
 
   useEffect(() => {
     if (copyState === "idle") return
@@ -85,17 +127,77 @@ export function CreatePollForm() {
     }
   }
 
+  function addPendingTimeSpan() {
+    setError(null)
+    setResult(null)
+
+    if (!normalizedPendingRange) {
+      toast({
+        variant: "error",
+        title: "Missing timespan",
+        description: "Select a date range or single day first.",
+      })
+      return
+    }
+
+    if (pendingRangeNewOptions.length === 0) {
+      toast({
+        title: "No new dates added",
+        description: "All dates in this timespan are already selected.",
+      })
+      return
+    }
+
+    const nextOptions = sortDateOptions([...options, ...pendingRangeNewOptions])
+    if (nextOptions.length > MAX_POLL_OPTIONS) {
+      const message = `You can select up to ${MAX_POLL_OPTIONS} dates per poll.`
+      setError(message)
+      toast({
+        variant: "error",
+        title: "Too many dates",
+        description: message,
+      })
+      return
+    }
+
+    setOptions(nextOptions)
+    setPendingRange(undefined)
+    toast({
+      variant: "success",
+      title: "Timespan added",
+      description: `Added ${pendingRangeNewOptions.length} date${pendingRangeNewOptions.length === 1 ? "" : "s"}.`,
+    })
+  }
+
+  function removeDateOption(option: string) {
+    setError(null)
+    setResult(null)
+    setOptions((current) => current.filter((value) => value !== option))
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setResult(null)
 
-    if (options.length < 2) {
-      setError("Select a date range with at least two dates")
+    if (options.length > MAX_POLL_OPTIONS) {
+      const message = `You can select up to ${MAX_POLL_OPTIONS} dates per poll.`
+      setError(message)
       toast({
         variant: "error",
-        title: "Missing date range",
-        description: "Select at least two dates before creating a poll.",
+        title: "Too many dates",
+        description: message,
+      })
+      return
+    }
+
+    if (options.length < MIN_POLL_OPTIONS) {
+      const message = `Select at least ${MIN_POLL_OPTIONS} dates before creating the poll`
+      setError(message)
+      toast({
+        variant: "error",
+        title: "Not enough dates",
+        description: message,
       })
       return
     }
@@ -187,13 +289,14 @@ export function CreatePollForm() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Create Date Poll</h1>
             <p className="text-muted-foreground max-w-xl text-sm">
-              Pick a date range and we generate one poll option per day.
+              Add one or more timespans and we generate one poll option per day.
             </p>
           </div>
           <div className="bg-background/80 text-muted-foreground flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm backdrop-blur">
             <CalendarDays className="size-4 shrink-0" />
             <span>
-              <AnimatedCount value={options.length} /> date option{options.length === 1 ? "" : "s"} selected
+              <AnimatedCount value={options.length} /> date option
+              {options.length === 1 ? "" : "s"} selected
             </span>
           </div>
         </div>
@@ -203,7 +306,9 @@ export function CreatePollForm() {
         <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Poll details</CardTitle>
-            <CardDescription>Define title, optional context and the date range.</CardDescription>
+            <CardDescription>
+              Define title/context and add one or more timespans.
+            </CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             <form className="space-y-4" onSubmit={onSubmit}>
@@ -217,6 +322,7 @@ export function CreatePollForm() {
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Date Poll"
+                  maxLength={MAX_POLL_TITLE_LENGTH}
                 />
               </div>
 
@@ -229,15 +335,56 @@ export function CreatePollForm() {
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Any trip context for participants"
+                  maxLength={MAX_POLL_DESCRIPTION_LENGTH}
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Date range</label>
-                <DateRangePicker value={dateRange} onChange={setDateRange} />
+                <label className="text-sm font-medium">Add timespan</label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1">
+                    <DateRangePicker
+                      value={pendingRange}
+                      onChange={setPendingRange}
+                      disabled={(date) =>
+                        existingOptionDayKeys.has(startOfDay(date).getTime())
+                      }
+                      placeholder="Select range or day"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    disabled={!hasPendingRange || exceedsMaxOptions}
+                    onClick={addPendingTimeSpan}
+                  >
+                    <Plus className="size-4" />
+                    Add timespan
+                  </Button>
+                </div>
+                {hasPendingRange ? (
+                  exceedsMaxOptions ? (
+                    <p className="text-xs text-destructive">
+                      Adding this timespan would exceed the maximum of{" "}
+                      <AnimatedCount value={MAX_POLL_OPTIONS} /> dates.
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      This timespan includes <AnimatedCount value={pendingRangeOptions.length} /> date
+                      {pendingRangeOptions.length === 1 ? "" : "s"}, with{" "}
+                      <AnimatedCount value={pendingRangeNewOptions.length} /> new date
+                      {pendingRangeNewOptions.length === 1 ? "" : "s"}.
+                    </p>
+                  )
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    Pick a range or single day, then click Add timespan.
+                  </p>
+                )}
                 <p className="text-muted-foreground text-xs">
-                  Generated options:{" "}
-                  {options.length > 0 ? <AnimatedCount value={options.length} /> : "none selected"}
+                  Selected dates: <AnimatedCount value={options.length} /> /{" "}
+                  <AnimatedCount value={MAX_POLL_OPTIONS} />
                 </p>
               </div>
 
@@ -256,11 +403,29 @@ export function CreatePollForm() {
         <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Overview</CardTitle>
-            <CardDescription>Review generated date options and share after creation.</CardDescription>
+            <CardDescription>
+              Review selected dates, remove any with `x`, and share after creation.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             {options.length > 0 ? (
               <div className="max-h-56 overflow-auto rounded-lg border p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-muted-foreground text-xs">Use `x` on a chip to remove a date.</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs"
+                    disabled={options.length === 0}
+                    onClick={() => {
+                      setResult(null)
+                      setOptions([])
+                    }}
+                  >
+                    Clear all
+                  </Button>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {options.map((option) => (
                     <span
@@ -268,14 +433,24 @@ export function CreatePollForm() {
                       ref={bindOptionBadgeRef(option)}
                       className="motion-safe:will-change-transform"
                     >
-                      <Badge variant="outline">{option}</Badge>
+                      <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-1 text-xs">
+                        <span>{option}</span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${option}`}
+                          className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded-full p-0.5 transition-colors"
+                          onClick={() => removeDateOption(option)}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </span>
                     </span>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="text-muted-foreground rounded-lg border border-dashed px-3 py-4 text-sm">
-                Select a range to generate options.
+                Add at least one timespan to generate date options.
               </div>
             )}
 

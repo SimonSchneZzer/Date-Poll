@@ -2,7 +2,7 @@
 
 import { CalendarIcon } from "lucide-react"
 import { useEffect, useState } from "react"
-import type { DateRange } from "react-day-picker"
+import type { DateRange, Matcher } from "react-day-picker"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -14,6 +14,8 @@ type DateRangePickerProps = {
   onChange: (range: DateRange | undefined) => void
   fromDate?: Date
   toDate?: Date
+  disabled?: Matcher | Matcher[]
+  excludeDisabled?: boolean
   defaultMonth?: Date
   numberOfMonths?: number
   placeholder?: string
@@ -57,6 +59,8 @@ export function DateRangePicker({
   onChange,
   fromDate,
   toDate,
+  disabled,
+  excludeDisabled = true,
   defaultMonth,
   numberOfMonths = 2,
   placeholder = "Pick a date range",
@@ -73,13 +77,11 @@ export function DateRangePicker({
     return () => mediaQuery.removeEventListener("change", updateViewportSize)
   }, [])
 
-  const disabledOutsideRange =
-    fromDate || toDate
-      ? [
-          ...(fromDate ? [{ before: fromDate }] : []),
-          ...(toDate ? [{ after: toDate }] : []),
-        ]
-      : undefined
+  const disabledMatchers = [
+    ...(fromDate ? ([{ before: fromDate }] as Matcher[]) : []),
+    ...(toDate ? ([{ after: toDate }] as Matcher[]) : []),
+    ...(disabled ? (Array.isArray(disabled) ? disabled : [disabled]) : []),
+  ]
 
   const visibleMonths = isSmallViewport ? 1 : numberOfMonths
   const fullLabel = getRangeLabel({
@@ -123,7 +125,8 @@ export function DateRangePicker({
           toDate={toDate}
           fromMonth={fromDate}
           toMonth={toDate}
-          disabled={disabledOutsideRange}
+          disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
+          excludeDisabled={excludeDisabled}
           initialFocus
         />
       </PopoverContent>

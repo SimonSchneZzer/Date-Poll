@@ -48,6 +48,8 @@
 }
 
 :root {
+  --font-geist-sans: "Avenir Next", "Segoe UI", "Helvetica Neue", "Noto Sans", sans-serif;
+  --font-geist-mono: "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", monospace;
   --radius: 0.75rem;
   --background: oklch(0.994 0.007 238);
   --foreground: oklch(0.24 0.03 252);

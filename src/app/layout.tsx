@@ -1,21 +1,10 @@
 import type { Metadata } from "next"
 import { cookies } from "next/headers"
-import { Geist, Geist_Mono } from "next/font/google"
 import Script from "next/script"
 import { AppShell } from "@/components/app/AppShell"
 import { AppProviders } from "@/components/app/AppProviders"
 import { getRequestUserAndPolls } from "@/lib/date-poll/request-context"
 import "./globals.css"
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-})
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-})
 
 export const metadata: Metadata = {
   title: "Date Poll",
@@ -101,9 +90,7 @@ export default async function RootLayout({
       suppressHydrationWarning
       className={htmlClassName || undefined}
     >
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
