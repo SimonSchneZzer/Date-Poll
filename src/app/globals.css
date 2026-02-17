@@ -445,6 +445,15 @@
     }
   }
 
+  @keyframes app-skeleton-shimmer {
+    0% {
+      transform: translateX(-120%);
+    }
+    100% {
+      transform: translateX(120%);
+    }
+  }
+
   .app-enter {
     @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300;
   }
@@ -460,6 +469,27 @@
   .app-value-pop {
     animation: app-value-pop 220ms var(--motion-ease-standard);
     will-change: transform, opacity;
+  }
+
+  .app-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in oklab, var(--muted) 88%, var(--background) 12%);
+    isolation: isolate;
+  }
+
+  .app-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-120%);
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in oklab, var(--background) 58%, transparent 42%) 48%,
+      transparent 100%
+    );
+    animation: app-skeleton-shimmer 1200ms linear infinite;
   }
 }
 

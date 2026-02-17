@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
@@ -103,6 +104,8 @@ function PollListSection({
   description,
   polls,
   emptyLabel,
+  isLoading,
+  showSkeleton,
   isMutatingPolls,
   onRemovePoll,
 }: {
@@ -110,6 +113,8 @@ function PollListSection({
   description: string
   polls: DashboardPoll[]
   emptyLabel: string
+  isLoading: boolean
+  showSkeleton: boolean
   isMutatingPolls: boolean
   onRemovePoll: (poll: DashboardPoll) => void
 }) {
@@ -123,12 +128,19 @@ function PollListSection({
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 pt-6">
-        {polls.length === 0 ? (
+        {showSkeleton ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Skeleton key={`${title}-skeleton-${index}`} className="h-11 w-full rounded-md" />
+            ))}
+          </div>
+        ) : polls.length === 0 ? (
           <div className="text-muted-foreground rounded-md border border-dashed px-3 py-4 text-sm">
             {emptyLabel}
           </div>
         ) : (
           <TooltipProvider>
+            {isLoading ? <Skeleton className="mb-1 h-2 w-20 rounded-full" /> : null}
             {polls.map((poll) => (
               <div
                 key={poll.id}
@@ -194,6 +206,8 @@ export function HomePollsDashboard({
     getTrackedPollsServerSnapshot
   )
   const [accountPolls, setAccountPolls] = useState(initialAccountPolls)
+  const [isRefreshingAccountPolls, setIsRefreshingAccountPolls] = useState(false)
+  const [optimisticHiddenPollIds, setOptimisticHiddenPollIds] = useState<string[]>([])
   const [joinInput, setJoinInput] = useState("")
   const [joinError, setJoinError] = useState<string | null>(null)
   const [pendingGuestJoinPath, setPendingGuestJoinPath] = useState<string | null>(null)
@@ -218,6 +232,7 @@ export function HomePollsDashboard({
     let cancelled = false
 
     async function refresh() {
+      setIsRefreshingAccountPolls(true)
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
         if (response.status === 401) {
@@ -239,6 +254,10 @@ export function HomePollsDashboard({
         }
       } catch {
         // Keep the current list on fetch failures.
+      } finally {
+        if (!cancelled) {
+          setIsRefreshingAccountPolls(false)
+        }
       }
     }
 
@@ -259,28 +278,35 @@ export function HomePollsDashboard({
       trackedPolls,
     })
   }, [accountPolls, initialUser, trackedPolls])
+  const optimisticHiddenPollIdSet = useMemo(
+    () => new Set(optimisticHiddenPollIds),
+    [optimisticHiddenPollIds]
+  )
 
   const createdPolls = useMemo<DashboardPoll[]>(() => {
     if (initialUser) {
       return mergedPolls
         .filter((poll) => poll.role === "organizer")
+        .filter((poll) => !optimisticHiddenPollIdSet.has(poll.id))
         .map(toDashboardPoll)
         .sort(sortDashboardPolls)
     }
 
     return []
-  }, [initialUser, mergedPolls])
+  }, [initialUser, mergedPolls, optimisticHiddenPollIdSet])
 
   const joinedPolls = useMemo<DashboardPoll[]>(() => {
     if (initialUser) {
       return mergedPolls
         .filter((poll) => poll.role === "participant")
+        .filter((poll) => !optimisticHiddenPollIdSet.has(poll.id))
         .map(toDashboardPoll)
         .sort(sortDashboardPolls)
     }
 
     return trackedPolls
       .filter((poll) => poll.participant || poll.organizer)
+      .filter((poll) => !optimisticHiddenPollIdSet.has(poll.id))
       .map((poll) => ({
         id: poll.id,
         title: poll.title,
@@ -289,9 +315,24 @@ export function HomePollsDashboard({
         lastInteractionAt: poll.lastInteractionAt,
       }))
       .sort(sortDashboardPolls)
-  }, [initialUser, mergedPolls, trackedPolls])
+  }, [initialUser, mergedPolls, optimisticHiddenPollIdSet, trackedPolls])
 
   const hasAnyPoll = createdPolls.length > 0 || joinedPolls.length > 0
+  const showPollMutationSkeleton = isMutatingPolls && !hasAnyPoll
+
+  useEffect(() => {
+    const prefetchPaths = new Set<string>([createPollHref])
+    for (const poll of createdPolls) {
+      prefetchPaths.add(poll.path)
+    }
+    for (const poll of joinedPolls) {
+      prefetchPaths.add(poll.path)
+    }
+
+    for (const path of prefetchPaths) {
+      router.prefetch(path)
+    }
+  }, [createPollHref, createdPolls, joinedPolls, router])
 
   function onJoinSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -414,12 +455,26 @@ export function HomePollsDashboard({
   async function confirmRemovePoll() {
     if (!removeConfirmState || isMutatingPolls) return
 
+    const pendingRemoveState = removeConfirmState
+    const previousAccountPolls = accountPolls
+
     setIsMutatingPolls(true)
     setRemoveError(null)
+    setRemoveConfirmState(null)
+    setOptimisticHiddenPollIds((current) => [...new Set([...current, pendingRemoveState.pollId])])
     try {
-      const isSuccess = await removePoll(removeConfirmState.pollId)
+      const isSuccess = await removePoll(pendingRemoveState.pollId)
       if (isSuccess) {
-        setRemoveConfirmState(null)
+        setOptimisticHiddenPollIds((current) =>
+          current.filter((pollId) => pollId !== pendingRemoveState.pollId)
+        )
+      } else {
+        if (initialUser) {
+          setAccountPolls(previousAccountPolls)
+        }
+        setOptimisticHiddenPollIds((current) =>
+          current.filter((pollId) => pollId !== pendingRemoveState.pollId)
+        )
       }
     } finally {
       setIsMutatingPolls(false)
@@ -494,14 +549,28 @@ export function HomePollsDashboard({
         </Card>
 
         {!hasAnyPoll ? (
-          <Card className="app-enter-soft">
-            <CardHeader className="border-b">
-              <CardTitle>No polls yet</CardTitle>
-              <CardDescription>
-                You have not created or joined any polls yet. Create one or join with a link above.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          showPollMutationSkeleton ? (
+            <Card className="app-enter-soft">
+              <CardHeader className="border-b">
+                <CardTitle>Updating polls</CardTitle>
+                <CardDescription>Applying your changes...</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-6">
+                <Skeleton className="h-11 w-full rounded-md" />
+                <Skeleton className="h-11 w-full rounded-md" />
+                <Skeleton className="h-11 w-2/3 rounded-md" />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="app-enter-soft">
+              <CardHeader className="border-b">
+                <CardTitle>No polls yet</CardTitle>
+                <CardDescription>
+                  You have not created or joined any polls yet. Create one or join with a link above.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
             <PollListSection
@@ -509,6 +578,8 @@ export function HomePollsDashboard({
               description="Polls you organize."
               polls={createdPolls}
               emptyLabel="You have not created any polls yet."
+              isLoading={isRefreshingAccountPolls}
+              showSkeleton={isMutatingPolls && createdPolls.length === 0}
               isMutatingPolls={isMutatingPolls}
               onRemovePoll={requestRemovePoll}
             />
@@ -517,6 +588,8 @@ export function HomePollsDashboard({
               description="Polls where you participate."
               polls={joinedPolls}
               emptyLabel="You have not joined any polls yet."
+              isLoading={isRefreshingAccountPolls}
+              showSkeleton={isMutatingPolls && joinedPolls.length === 0}
               isMutatingPolls={isMutatingPolls}
               onRemovePoll={requestRemovePoll}
             />

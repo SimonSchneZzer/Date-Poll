@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
@@ -132,6 +133,9 @@ export function AppShell({
   const [confirmState, setConfirmState] = useState<ConfirmState>(null)
   const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
+  const [isRefreshingAccountPolls, setIsRefreshingAccountPolls] = useState(false)
+  const [optimisticHiddenPollIds, setOptimisticHiddenPollIds] = useState<string[]>([])
+  const [isOptimisticallyClearingAll, setIsOptimisticallyClearingAll] = useState(false)
   const [theme, setTheme] = useState<Theme>("light")
   const [isDesktopThemeSelectorOpen, setIsDesktopThemeSelectorOpen] = useState(false)
   const [isMobileThemeSelectorOpen, setIsMobileThemeSelectorOpen] = useState(false)
@@ -205,6 +209,7 @@ export function AppShell({
     let cancelled = false
 
     async function fetchAccountPolls() {
+      setIsRefreshingAccountPolls(true)
       try {
         const response = await fetch("/api/polls/mine", { method: "GET", cache: "no-store" })
         if (response.status === 401) {
@@ -227,6 +232,10 @@ export function AppShell({
         }
       } catch {
         // Silent fallback to existing sidebar state.
+      } finally {
+        if (!cancelled) {
+          setIsRefreshingAccountPolls(false)
+        }
       }
     }
 
@@ -253,6 +262,7 @@ export function AppShell({
     applyTheme(nextTheme)
     setTheme(nextTheme)
     window.localStorage.setItem("theme", nextTheme)
+    document.cookie = `theme=${encodeURIComponent(nextTheme)}; path=/; max-age=31536000; samesite=lax`
   }
 
   function toggleTheme() {
@@ -449,26 +459,63 @@ export function AppShell({
   async function confirmRemoveAction() {
     if (!confirmState || isMutatingPolls) return
 
+    const pendingConfirmState = confirmState
+    const previousAccountPolls = accountPolls
+    const optimisticPollId =
+      pendingConfirmState.type === "single" ? pendingConfirmState.pollId : null
+
     setIsMutatingPolls(true)
     setPollMutationError(null)
+    setConfirmState(null)
+    setIsMobileNavOpen(false)
+
+    if (optimisticPollId) {
+      setOptimisticHiddenPollIds((current) => [...new Set([...current, optimisticPollId])])
+      if (isViewingPoll(optimisticPollId)) {
+        redirectHome()
+      }
+    } else {
+      setIsOptimisticallyClearingAll(true)
+      if (isViewingPollDetailPage()) {
+        redirectHome()
+      }
+    }
+
     try {
       let isSuccess = false
-      if (confirmState.type === "single") {
-        isSuccess = await removeSinglePoll(confirmState.pollId)
+      if (pendingConfirmState.type === "single") {
+        isSuccess = await removeSinglePoll(pendingConfirmState.pollId)
       } else {
         isSuccess = await removeAllPolls()
       }
 
       if (isSuccess) {
-        setConfirmState(null)
-        setIsMobileNavOpen(false)
+        if (optimisticPollId) {
+          setOptimisticHiddenPollIds((current) =>
+            current.filter((pollId) => pollId !== optimisticPollId)
+          )
+        } else {
+          setIsOptimisticallyClearingAll(false)
+          setOptimisticHiddenPollIds([])
+        }
+      } else {
+        if (initialUser) {
+          setAccountPolls(previousAccountPolls)
+        }
+        if (optimisticPollId) {
+          setOptimisticHiddenPollIds((current) =>
+            current.filter((pollId) => pollId !== optimisticPollId)
+          )
+        } else {
+          setIsOptimisticallyClearingAll(false)
+        }
       }
     } finally {
       setIsMutatingPolls(false)
     }
   }
 
-  const sidebarPolls = useMemo<SidebarPoll[]>(() => {
+  const baseSidebarPolls = useMemo<SidebarPoll[]>(() => {
     if (initialUser) {
       return mergeAccountAndTrackedPolls({
         accountPolls,
@@ -484,6 +531,17 @@ export function AppShell({
       lastInteractionAt: poll.lastInteractionAt,
     }))
   }, [accountPolls, initialUser, trackedPolls])
+  const sidebarPolls = useMemo(() => {
+    if (isOptimisticallyClearingAll) {
+      return []
+    }
+    if (optimisticHiddenPollIds.length === 0) {
+      return baseSidebarPolls
+    }
+
+    const hiddenPollIds = new Set(optimisticHiddenPollIds)
+    return baseSidebarPolls.filter((poll) => !hiddenPollIds.has(poll.id))
+  }, [baseSidebarPolls, isOptimisticallyClearingAll, optimisticHiddenPollIds])
   const ownedSidebarPolls = useMemo(
     () => sidebarPolls.filter((poll) => poll.role === "organizer"),
     [sidebarPolls]
@@ -507,8 +565,20 @@ export function AppShell({
     ? "Leave/Delete all polls"
     : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
+  const showSidebarPollSkeleton = isMutatingPolls && isOptimisticallyClearingAll
   const lightDarkTargetTheme = theme === "dark" ? "light" : "dark"
   const lightDarkTargetLabel = THEME_LABEL[lightDarkTargetTheme]
+
+  useEffect(() => {
+    const prefetchPaths = new Set<string>([createPollHref])
+    for (const poll of sidebarPolls) {
+      prefetchPaths.add(poll.path)
+    }
+
+    for (const path of prefetchPaths) {
+      router.prefetch(path)
+    }
+  }, [createPollHref, router, sidebarPolls])
 
   function openMobileNav() {
     setIsMobileNavMounted(true)
@@ -641,6 +711,8 @@ export function AppShell({
     polls: SidebarPoll[]
     bindRowRef: ReturnType<typeof useFlipListAnimation>
     emptyLabel: string
+    isLoading?: boolean
+    showSkeleton?: boolean
     onNavigate?: () => void
     isCompact?: boolean
   }) {
@@ -654,14 +726,45 @@ export function AppShell({
         >
           {args.title}
         </p>
-        {args.polls.length > 0 ? (
+        {args.showSkeleton ? (
           <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
+            {Array.from({ length: args.isCompact ? 4 : 3 }).map((_, index) => (
+              <div
+                key={`skeleton-${args.title}-${index}`}
+                className={cn("flex items-center gap-1", args.isCompact && "justify-center")}
+              >
+                {args.isCompact ? (
+                  <Skeleton className="size-9 rounded-md" />
+                ) : (
+                  <Skeleton className="h-11 flex-1 rounded-md" />
+                )}
+              </div>
+            ))}
+          </div>
+        ) : args.polls.length > 0 ? (
+          <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
+            {args.isLoading ? <Skeleton className="mb-1 h-2 w-16 rounded-full" /> : null}
             {renderPollRows({
               polls: args.polls,
               bindRowRef: args.bindRowRef,
               onNavigate: args.onNavigate,
               isCompact: args.isCompact,
             })}
+          </div>
+        ) : args.isLoading ? (
+          <div className={cn("space-y-1", args.isCompact && "space-y-2")}>
+            {Array.from({ length: args.isCompact ? 3 : 2 }).map((_, index) => (
+              <div
+                key={`loading-${args.title}-${index}`}
+                className={cn("flex items-center gap-1", args.isCompact && "justify-center")}
+              >
+                {args.isCompact ? (
+                  <Skeleton className="size-9 rounded-md" />
+                ) : (
+                  <Skeleton className="h-11 flex-1 rounded-md" />
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           args.isCompact ? null : (
@@ -997,6 +1100,8 @@ export function AppShell({
                 polls: ownedSidebarPolls,
                 bindRowRef: bindOwnedPollRowRef,
                 emptyLabel: "No polls yet.",
+                isLoading: isRefreshingAccountPolls,
+                showSkeleton: showSidebarPollSkeleton,
                 isCompact: isDesktopSidebarCollapsed,
               })}
               {renderPollSection({
@@ -1004,6 +1109,8 @@ export function AppShell({
                 polls: joinedSidebarPolls,
                 bindRowRef: bindJoinedPollRowRef,
                 emptyLabel: "No joined polls yet.",
+                isLoading: isRefreshingAccountPolls,
+                showSkeleton: showSidebarPollSkeleton,
                 isCompact: isDesktopSidebarCollapsed,
               })}
             </div>
@@ -1108,6 +1215,8 @@ export function AppShell({
                     polls: ownedSidebarPolls,
                     bindRowRef: bindOwnedPollRowRef,
                     emptyLabel: "No polls yet.",
+                    isLoading: isRefreshingAccountPolls,
+                    showSkeleton: showSidebarPollSkeleton,
                     onNavigate: closeMobileNav,
                   })}
                   {renderPollSection({
@@ -1115,6 +1224,8 @@ export function AppShell({
                     polls: joinedSidebarPolls,
                     bindRowRef: bindJoinedPollRowRef,
                     emptyLabel: "No joined polls yet.",
+                    isLoading: isRefreshingAccountPolls,
+                    showSkeleton: showSidebarPollSkeleton,
                     onNavigate: closeMobileNav,
                   })}
                 </div>
