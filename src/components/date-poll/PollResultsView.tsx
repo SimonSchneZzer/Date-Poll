@@ -1,6 +1,17 @@
 "use client"
 
-import { Loader2, Search, Trash2 } from "lucide-react"
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileBraces,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Printer,
+  Search,
+  Trash2,
+} from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -21,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -29,6 +41,7 @@ import {
   getPollOptionTimestamp,
 } from "@/lib/date-poll/date-utils"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
+import { cn } from "@/lib/utils"
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 const CONSECUTIVE_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
@@ -147,12 +160,235 @@ function formatConsecutiveRange(range: ConsecutiveRange): string {
   return `${startLabel} to ${endLabel}`
 }
 
+function getParticipantInitial(fullName: string): string {
+  const normalized = fullName.trim()
+  return normalized.charAt(0).toUpperCase() || "?"
+}
+
 type RemoveVoteState = {
   participantId: string
   participantName: string
 } | null
 
+type ExportTable = {
+  title: string
+  headers: string[]
+  rows: string[][]
+}
+
 const QUICK_READ_ALL_ITEMS = Number.MAX_SAFE_INTEGER
+
+function sanitizeFileNamePart(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || "export"
+}
+
+function escapeCsvCell(value: string): string {
+  if (!/[",\n\r]/.test(value)) return value
+  return `"${value.replaceAll('"', '""')}"`
+}
+
+function toDelimitedContent(table: ExportTable, delimiter: "," | "\t"): string {
+  const header = table.headers
+    .map((headerCell) => (delimiter === "," ? escapeCsvCell(headerCell) : headerCell))
+    .join(delimiter)
+  const rows = table.rows.map((row) =>
+    row
+      .map((cell) => (delimiter === "," ? escapeCsvCell(cell) : cell.replaceAll("\t", " ").replaceAll("\n", " ")))
+      .join(delimiter)
+  )
+
+  return [header, ...rows].join("\n")
+}
+
+function toJsonContent(table: ExportTable): string {
+  const values = table.rows.map((row) => {
+    const record: Record<string, string> = {}
+    for (let index = 0; index < table.headers.length; index += 1) {
+      record[table.headers[index]] = row[index] ?? ""
+    }
+    return record
+  })
+
+  return JSON.stringify(values, null, 2)
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
+function toExcelHtmlContent(table: ExportTable): string {
+  const headerHtml = table.headers.map((headerCell) => `<th>${escapeHtml(headerCell)}</th>`).join("")
+  const bodyHtml = table.rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .join("")
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(table.title)}</title>
+  </head>
+  <body>
+    <table border="1">
+      <thead><tr>${headerHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+  </body>
+</html>`
+}
+
+function downloadFile(args: { fileName: string; mimeType: string; content: string }) {
+  const blob = new Blob([args.content], { type: args.mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = args.fileName
+  document.body.append(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function printTableAsPdf(table: ExportTable) {
+  const headerHtml = table.headers.map((headerCell) => `<th>${escapeHtml(headerCell)}</th>`).join("")
+  const bodyHtml = table.rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .join("")
+  const content = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(table.title)}</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 20px; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      table { border-collapse: collapse; width: 100%; font-size: 12px; }
+      th, td { border: 1px solid #d4d4d8; padding: 6px 8px; text-align: left; vertical-align: top; }
+      th { background: #f4f4f5; }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(table.title)}</h1>
+    <table>
+      <thead><tr>${headerHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+    <script>window.onload = () => window.print();</script>
+  </body>
+</html>`
+
+  const printWindow = window.open("", "_blank", "noopener,noreferrer")
+  if (!printWindow) return
+
+  printWindow.document.open()
+  printWindow.document.write(content)
+  printWindow.document.close()
+}
+
+function TableExportMenu({
+  table,
+  fileBaseName,
+}: {
+  table: ExportTable
+  fileBaseName: string
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm">
+          <Download className="size-4" />
+          Export
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56 space-y-1 p-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() => printTableAsPdf(table)}
+        >
+          <Printer className="size-4" />
+          PDF (Print)
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() =>
+            downloadFile({
+              fileName: `${fileBaseName}.xls`,
+              mimeType: "application/vnd.ms-excel;charset=utf-8",
+              content: "\uFEFF" + toExcelHtmlContent(table),
+            })
+          }
+        >
+          <FileSpreadsheet className="size-4" />
+          Excel (.xls)
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() =>
+            downloadFile({
+              fileName: `${fileBaseName}.csv`,
+              mimeType: "text/csv;charset=utf-8",
+              content: "\uFEFF" + toDelimitedContent(table, ","),
+            })
+          }
+        >
+          <FileText className="size-4" />
+          CSV
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() =>
+            downloadFile({
+              fileName: `${fileBaseName}.tsv`,
+              mimeType: "text/tab-separated-values;charset=utf-8",
+              content: toDelimitedContent(table, "\t"),
+            })
+          }
+        >
+          <FileText className="size-4" />
+          TSV
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          onClick={() =>
+            downloadFile({
+              fileName: `${fileBaseName}.json`,
+              mimeType: "application/json;charset=utf-8",
+              content: toJsonContent(table),
+            })
+          }
+        >
+          <FileBraces className="size-4" />
+          JSON
+        </Button>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 export function PollResultsView({
   poll,
@@ -167,6 +403,7 @@ export function PollResultsView({
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
   const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_ALL_ITEMS)
   const [participantQuery, setParticipantQuery] = useState("")
+  const [isParticipantColumnCollapsed, setIsParticipantColumnCollapsed] = useState(false)
   const sortedOptions = useMemo(() => optionsByDate(pollState), [pollState])
   const normalizedParticipantQuery = participantQuery.trim().toLocaleLowerCase()
   const filteredParticipants = useMemo(() => {
@@ -281,6 +518,59 @@ export function PollResultsView({
     )
   }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
   const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
+  const participantColumnHeadClass = isParticipantColumnCollapsed
+    ? "sticky left-0 z-20 w-11 min-w-11 border-r bg-background"
+    : "sticky left-0 z-20 w-[9rem] min-w-[9rem] border-r bg-background sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
+  const participantColumnCellClass = isParticipantColumnCollapsed
+    ? "sticky left-0 z-10 w-11 min-w-11 border-r bg-background px-1"
+    : "sticky left-0 z-10 w-[9rem] min-w-[9rem] border-r bg-background whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
+  const exportBaseName = useMemo(() => {
+    const titlePart = sanitizeFileNamePart(pollState.title)
+    const idPart = sanitizeFileNamePart(pollState.id).slice(0, 8)
+    return `${titlePart}-${idPart}`
+  }, [pollState.id, pollState.title])
+  const overviewExportTable = useMemo<ExportTable>(
+    () => ({
+      title: `${pollState.title} - Results overview`,
+      headers: ["Option", ...VOTE_STATUS_ORDER.map((status) => VOTE_STATUS_ARIA_LABEL[status])],
+      rows: sortedOptions.map((option) => [
+        formatPollOptionLabel(option.value),
+        String(option.canCount),
+        String(option.maybeCount),
+        String(option.cantCount),
+      ]),
+    }),
+    [pollState.title, sortedOptions]
+  )
+  const participantExportTable = useMemo<ExportTable>(
+    () => ({
+      title: `${pollState.title} - Who voted what`,
+      headers: ["Participant", ...sortedOptions.map((option) => formatPollOptionLabel(option.value))],
+      rows: filteredParticipants.map((participant) => [
+        participant.fullName,
+        ...sortedOptions.map((option) => {
+          const vote = participant.votes[option.id]
+          return vote ? VOTE_STATUS_LABEL[vote] : ""
+        }),
+      ]),
+    }),
+    [filteredParticipants, pollState.title, sortedOptions]
+  )
+  const insightsExportTable = useMemo<ExportTable>(
+    () => ({
+      title: `${pollState.title} - Insights`,
+      headers: ["Rank", "Option", "Score", "Can", "Maybe", "Can't"],
+      rows: displayedQuickReadOptions.map((item, index) => [
+        String(index + 1),
+        formatPollOptionLabel(item.option.value),
+        String(item.score),
+        String(item.option.canCount),
+        String(item.option.maybeCount),
+        String(item.option.cantCount),
+      ]),
+    }),
+    [displayedQuickReadOptions, pollState.title]
+  )
 
   function updateQuickReadCount(nextCount: number) {
     const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxCount)
@@ -347,8 +637,16 @@ export function PollResultsView({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="overflow-hidden">
           <CardHeader className="border-b">
-            <CardTitle>Results overview</CardTitle>
-            <CardDescription>Dates are shown in chronological order.</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>Results overview</CardTitle>
+                <CardDescription>Dates are shown in chronological order.</CardDescription>
+              </div>
+              <TableExportMenu
+                table={overviewExportTable}
+                fileBaseName={`${exportBaseName}-overview`}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
             <div className="overflow-hidden rounded-xl border">
@@ -399,8 +697,16 @@ export function PollResultsView({
 
         <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start">
           <CardHeader className="border-b">
-            <CardTitle>Insights</CardTitle>
-            <CardDescription>Quick read of the strongest options.</CardDescription>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle>Insights</CardTitle>
+                <CardDescription>Quick read of the strongest options.</CardDescription>
+              </div>
+              <TableExportMenu
+                table={insightsExportTable}
+                fileBaseName={`${exportBaseName}-insights`}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-2.5 pt-4">
             <div className="space-y-2 rounded-xl border bg-gradient-to-br from-background via-muted/25 to-background p-3">
@@ -540,8 +846,16 @@ export function PollResultsView({
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b">
-          <CardTitle>Who voted what</CardTitle>
-          <CardDescription>Detailed vote matrix for all participants and options.</CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle>Who voted what</CardTitle>
+              <CardDescription>Detailed vote matrix for all participants and options.</CardDescription>
+            </div>
+            <TableExportMenu
+              table={participantExportTable}
+              fileBaseName={`${exportBaseName}-vote-matrix`}
+            />
+          </div>
         </CardHeader>
         <CardContent className="pt-6">
           <TooltipProvider>
@@ -557,7 +871,7 @@ export function PollResultsView({
                   suppressHydrationWarning
                 />
               </div>
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-xs sm:ml-auto">
                 {filteredParticipants.length} of {pollState.participants.length} participants
               </p>
             </div>
@@ -566,8 +880,45 @@ export function PollResultsView({
               <Table className="w-full min-w-[44rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-20 w-[9rem] min-w-[9rem] border-r bg-background sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]">
-                      Participant
+                    <TableHead className={participantColumnHeadClass}>
+                      <div
+                        className={cn(
+                          "flex items-center",
+                          isParticipantColumnCollapsed ? "justify-center" : "justify-between gap-2"
+                        )}
+                      >
+                        {isParticipantColumnCollapsed ? (
+                          <span className="sr-only">Participant</span>
+                        ) : (
+                          <span className="truncate">Participant</span>
+                        )}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => setIsParticipantColumnCollapsed((prev) => !prev)}
+                              aria-label={
+                                isParticipantColumnCollapsed
+                                  ? "Expand participant names"
+                                  : "Collapse participant names"
+                              }
+                              aria-pressed={isParticipantColumnCollapsed}
+                            >
+                              {isParticipantColumnCollapsed ? (
+                                <ChevronRight className="size-4" />
+                              ) : (
+                                <ChevronLeft className="size-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isParticipantColumnCollapsed ? "Expand participant names" : "Collapse participant names"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </TableHead>
                     {sortedOptions.map((option) => (
                       <TableHead key={option.id} className="whitespace-nowrap text-center">
@@ -593,8 +944,19 @@ export function PollResultsView({
                   ) : (
                     filteredParticipants.map((participant) => (
                       <TableRow key={participant.id}>
-                        <TableCell className="sticky left-0 z-10 w-[9rem] min-w-[9rem] border-r bg-background whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]">
-                          {participant.fullName}
+                        <TableCell className={participantColumnCellClass}>
+                          {isParticipantColumnCollapsed ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex size-7 items-center justify-center rounded-full border text-xs font-semibold">
+                                  {getParticipantInitial(participant.fullName)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{participant.fullName}</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            participant.fullName
+                          )}
                         </TableCell>
                         {sortedOptions.map((option) => {
                           const vote = participant.votes[option.id]
