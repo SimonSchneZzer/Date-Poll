@@ -24,9 +24,18 @@ const THEME_INIT_SCRIPT = `
 (() => {
   try {
     const stored = window.localStorage.getItem("theme");
+    const normalizedStored = stored === "prism" ? "salmon" : stored;
     const preferred = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    const theme = stored === "dark" || stored === "light" ? stored : preferred;
-    document.documentElement.classList.toggle("dark", theme === "dark");
+    const theme = normalizedStored === "light" || normalizedStored === "salmon" || normalizedStored === "rainbow" || normalizedStored === "graphite" || normalizedStored === "dark" ? normalizedStored : preferred;
+    const root = document.documentElement;
+    root.classList.toggle("dark", theme === "dark" || theme === "graphite");
+    root.classList.toggle("salmon", theme === "salmon");
+    root.classList.toggle("rainbow", theme === "rainbow");
+    root.classList.toggle("prism", false);
+    root.classList.toggle("graphite", theme === "graphite");
+    if (stored === "prism") {
+      window.localStorage.setItem("theme", "salmon");
+    }
   } catch {}
 })();
 `

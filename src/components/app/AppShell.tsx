@@ -2,7 +2,21 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ListX, LogIn, LogOut, Menu, Moon, Plus, Settings, Sun, Trash2, X } from "lucide-react"
+import {
+  Circle,
+  Fish,
+  ListX,
+  LogIn,
+  LogOut,
+  Menu,
+  Moon,
+  Plus,
+  Rainbow,
+  Settings,
+  Sun,
+  Trash2,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -30,15 +44,42 @@ import {
 } from "@/lib/date-poll/tracked-polls"
 import { cn } from "@/lib/utils"
 
-type Theme = "light" | "dark"
+type Theme = "light" | "salmon" | "rainbow" | "graphite" | "dark"
 type SidebarPoll = AccountPollSummary
 type ConfirmState =
   | { type: "single"; pollId: string; pollTitle: string; pollRole: SidebarPoll["role"] }
   | { type: "all" }
   | null
 
+const THEME_ORDER: Theme[] = ["light", "salmon", "rainbow", "graphite", "dark"]
+const THEME_LABEL: Record<Theme, string> = {
+  light: "Light",
+  salmon: "Salmon",
+  rainbow: "Rainbow",
+  graphite: "Graphite",
+  dark: "Dark",
+}
+
+function getCurrentTheme(): Theme {
+  if (document.documentElement.classList.contains("rainbow")) return "rainbow"
+  if (document.documentElement.classList.contains("salmon")) return "salmon"
+  if (document.documentElement.classList.contains("prism")) return "salmon"
+  if (document.documentElement.classList.contains("graphite")) return "graphite"
+  return document.documentElement.classList.contains("dark") ? "dark" : "light"
+}
+
+function getNextTheme(theme: Theme): Theme {
+  const currentIndex = THEME_ORDER.indexOf(theme)
+  return THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length]
+}
+
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("dark", theme === "dark")
+  const root = document.documentElement
+  root.classList.toggle("dark", theme === "dark" || theme === "graphite")
+  root.classList.toggle("salmon", theme === "salmon")
+  root.classList.toggle("rainbow", theme === "rainbow")
+  root.classList.toggle("prism", false)
+  root.classList.toggle("graphite", theme === "graphite")
 }
 
 function getAvatarLetter(user: AuthUser | null): string {
@@ -64,6 +105,7 @@ export function AppShell({
   const [confirmState, setConfirmState] = useState<ConfirmState>(null)
   const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
+  const [theme, setTheme] = useState<Theme>("light")
   const trackedPolls = useSyncExternalStore(
     subscribeTrackedPolls,
     getTrackedPollsSnapshot,
@@ -93,6 +135,12 @@ export function AppShell({
   useEffect(() => {
     setAccountPolls(initialAccountPolls)
   }, [initialAccountPolls])
+
+  useEffect(() => {
+    const currentTheme = getCurrentTheme()
+    applyTheme(currentTheme)
+    setTheme(currentTheme)
+  }, [])
 
   useEffect(() => {
     if (!initialUser) return
@@ -135,10 +183,9 @@ export function AppShell({
   }, [initialUser, trackedPolls, router])
 
   function toggleTheme() {
-    const nextTheme: Theme = document.documentElement.classList.contains("dark")
-      ? "light"
-      : "dark"
+    const nextTheme = getNextTheme(getCurrentTheme())
     applyTheme(nextTheme)
+    setTheme(nextTheme)
     window.localStorage.setItem("theme", nextTheme)
   }
 
@@ -323,6 +370,7 @@ export function AppShell({
     ? "Leave/Delete all polls"
     : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
+  const nextThemeLabel = THEME_LABEL[getNextTheme(theme)]
 
   function closeMobileNav() {
     setIsMobileNavOpen(false)
@@ -467,12 +515,22 @@ export function AppShell({
               size="sm"
               variant="ghost"
               className="w-full justify-start"
-              aria-label="Toggle theme"
+              aria-label={`Switch theme to ${nextThemeLabel}`}
+              title={`Switch theme to ${nextThemeLabel}`}
               onClick={toggleTheme}
             >
-              <Sun className="hidden size-4 dark:block" />
-              <Moon className="size-4 dark:hidden" />
-              Toggle theme
+              {theme === "dark" ? (
+                <Moon className="size-4" />
+              ) : theme === "rainbow" ? (
+                <Rainbow className="size-4" />
+              ) : theme === "salmon" ? (
+                <Fish className="size-4" />
+              ) : theme === "graphite" ? (
+                <Circle className="size-4" />
+              ) : (
+                <Sun className="size-4" />
+              )}
+              Theme: {THEME_LABEL[theme]}
             </Button>
 
             <Button
@@ -497,12 +555,12 @@ export function AppShell({
   }
 
   if (isAuthPage) {
-    return <div className="min-h-screen bg-background text-foreground">{children}</div>
+    return <div className="min-h-screen text-foreground">{children}</div>
   }
 
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-card/30 md:flex md:flex-col">
         <div className="flex h-16 items-center justify-between border-b px-4">
           <Link href="/" className="text-sm font-semibold tracking-wide">

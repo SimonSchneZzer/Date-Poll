@@ -298,14 +298,21 @@ function printTableAsPdf(table: ExportTable) {
 function TableExportMenu({
   table,
   fileBaseName,
+  triggerClassName,
 }: {
   table: ExportTable
   fileBaseName: string
+  triggerClassName?: string
 }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn("h-7 px-2 text-xs sm:h-8 sm:px-3 sm:text-sm", triggerClassName)}
+        >
           <Download className="size-4" />
           Export
         </Button>
@@ -519,10 +526,10 @@ export function PollResultsView({
   }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
   const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
   const participantColumnHeadClass = isParticipantColumnCollapsed
-    ? "sticky left-0 z-20 w-11 min-w-11 border-r bg-background"
+    ? "sticky left-0 z-20 w-11 min-w-11 border-r bg-background px-0 text-center"
     : "sticky left-0 z-20 w-[9rem] min-w-[9rem] border-r bg-background sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
   const participantColumnCellClass = isParticipantColumnCollapsed
-    ? "sticky left-0 z-10 w-11 min-w-11 border-r bg-background px-1"
+    ? "sticky left-0 z-10 w-11 min-w-11 border-r bg-background px-0 text-center"
     : "sticky left-0 z-10 w-[9rem] min-w-[9rem] border-r bg-background whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]"
   const exportBaseName = useMemo(() => {
     const titlePart = sanitizeFileNamePart(pollState.title)
@@ -637,15 +644,18 @@ export function PollResultsView({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="overflow-hidden">
           <CardHeader className="border-b">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <CardTitle>Results overview</CardTitle>
+            <div className="space-y-1">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                <CardTitle className="leading-snug">Results overview</CardTitle>
+                <TableExportMenu
+                  table={overviewExportTable}
+                  fileBaseName={`${exportBaseName}-overview`}
+                  triggerClassName="justify-self-end self-start"
+                />
+              </div>
+              <div className="pr-1">
                 <CardDescription>Dates are shown in chronological order.</CardDescription>
               </div>
-              <TableExportMenu
-                table={overviewExportTable}
-                fileBaseName={`${exportBaseName}-overview`}
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-6">
@@ -697,15 +707,18 @@ export function PollResultsView({
 
         <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start">
           <CardHeader className="border-b">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <CardTitle>Insights</CardTitle>
+            <div className="space-y-1">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                <CardTitle className="leading-snug">Insights</CardTitle>
+                <TableExportMenu
+                  table={insightsExportTable}
+                  fileBaseName={`${exportBaseName}-insights`}
+                  triggerClassName="justify-self-end self-start"
+                />
+              </div>
+              <div className="pr-1">
                 <CardDescription>Quick read of the strongest options.</CardDescription>
               </div>
-              <TableExportMenu
-                table={insightsExportTable}
-                fileBaseName={`${exportBaseName}-insights`}
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-2.5 pt-4">
@@ -846,15 +859,18 @@ export function PollResultsView({
 
       <Card className="overflow-hidden">
         <CardHeader className="border-b">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle>Who voted what</CardTitle>
+          <div className="space-y-1">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+              <CardTitle className="leading-snug">Who voted what</CardTitle>
+              <TableExportMenu
+                table={participantExportTable}
+                fileBaseName={`${exportBaseName}-vote-matrix`}
+                triggerClassName="justify-self-end self-start"
+              />
+            </div>
+            <div className="pr-1">
               <CardDescription>Detailed vote matrix for all participants and options.</CardDescription>
             </div>
-            <TableExportMenu
-              table={participantExportTable}
-              fileBaseName={`${exportBaseName}-vote-matrix`}
-            />
           </div>
         </CardHeader>
         <CardContent className="pt-6">
