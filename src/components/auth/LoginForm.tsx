@@ -8,6 +8,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast-provider"
 
 type LoginFormProps = {
   nextPath: string
@@ -18,6 +19,7 @@ type LoginFormProps = {
 
 export function LoginForm({ nextPath, nextPathLabel, configured, initialError }: LoginFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(initialError ?? null)
@@ -29,6 +31,11 @@ export function LoginForm({ nextPath, nextPathLabel, configured, initialError }:
 
     if (!configured) {
       setError("Supabase is not configured yet")
+      toast({
+        variant: "error",
+        title: "Auth not configured",
+        description: "Configure Supabase credentials first.",
+      })
       return
     }
 
@@ -48,21 +55,37 @@ export function LoginForm({ nextPath, nextPathLabel, configured, initialError }:
       } | null
 
       if (!response.ok) {
-        setError(payload?.error ?? "Sign in failed")
+        const message = payload?.error ?? "Sign in failed"
+        setError(message)
+        toast({
+          variant: "error",
+          title: "Sign in failed",
+          description: message,
+        })
         return
       }
 
+      toast({
+        variant: "success",
+        title: "Signed in",
+        description: `Redirecting to ${nextPathLabel}.`,
+      })
       router.push(nextPath)
       router.refresh()
     } catch {
       setError("Sign in failed")
+      toast({
+        variant: "error",
+        title: "Sign in failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Card className="w-full overflow-hidden">
+    <Card className="w-full overflow-hidden app-enter-soft">
       <CardHeader className="border-b">
         <CardTitle className="text-xl sm:text-2xl">Sign in</CardTitle>
         <CardDescription>
@@ -112,7 +135,7 @@ export function LoginForm({ nextPath, nextPathLabel, configured, initialError }:
           </Button>
         </form>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive app-enter-scale">{error}</p> : null}
 
         {!configured ? (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">

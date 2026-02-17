@@ -14,6 +14,7 @@ import {
   VoteStatusIcon,
 } from "@/components/date-poll/vote-status-ui"
 import { Badge } from "@/components/ui/badge"
+import { AnimatedCount } from "@/components/ui/animated-count"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   formatPollOptionLabel,
@@ -62,6 +64,7 @@ export function PollClientPage({
   initialError = null,
 }: PollClientPageProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const poll = initialPoll
 
   const [fullName, setFullName] = useState(initialFullName ?? "")
@@ -198,15 +201,32 @@ export function PollClientPage({
 
       if (!response.ok) {
         if ("errors" in payload && payload.errors?.length) {
-          setError(payload.errors.join(". "))
+          const message = payload.errors.join(". ")
+          setError(message)
+          toast({
+            variant: "error",
+            title: "Vote submission failed",
+            description: message,
+          })
         } else {
-          setError(("error" in payload ? payload.error : undefined) ?? "Vote submission failed")
+          const message = ("error" in payload ? payload.error : undefined) ?? "Vote submission failed"
+          setError(message)
+          toast({
+            variant: "error",
+            title: "Vote submission failed",
+            description: message,
+          })
         }
         return
       }
 
       if (!("poll" in payload)) {
         setError("Vote submission failed")
+        toast({
+          variant: "error",
+          title: "Vote submission failed",
+          description: "The server response was incomplete.",
+        })
         return
       }
 
@@ -219,10 +239,20 @@ export function PollClientPage({
       })
 
       setCanViewResults(true)
+      toast({
+        variant: "success",
+        title: "Vote submitted",
+        description: "Results are now unlocked.",
+      })
       router.push(`/poll/${updatedPoll.id}/results`)
       router.refresh()
     } catch {
       setError("Vote submission failed")
+      toast({
+        variant: "error",
+        title: "Vote submission failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -266,6 +296,11 @@ export function PollClientPage({
 
     if (!fullName.trim()) {
       setError("Full name is required")
+      toast({
+        variant: "error",
+        title: "Missing name",
+        description: "Enter your full name before submitting.",
+      })
       return
     }
 
@@ -284,11 +319,15 @@ export function PollClientPage({
     setRangeStatus(null)
     setError(null)
     setIsClearDialogOpen(false)
+    toast({
+      title: "Votes cleared",
+      description: "All selected availability statuses were removed.",
+    })
   }
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8 app-enter">
         <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -329,18 +368,22 @@ export function PollClientPage({
           )}
         </div>
         <div className="relative mt-4 flex flex-wrap gap-2">
-          <Badge variant="secondary">Dates: {poll.options.length}</Badge>
+          <Badge variant="secondary" className="transition-transform duration-200">
+            Dates: <AnimatedCount value={poll.options.length} />
+          </Badge>
           {VOTE_STATUS_ORDER.map((status) => (
-            <Badge key={status} variant="secondary">
+            <Badge key={status} variant="secondary" className="transition-transform duration-200">
               <VoteStatusIcon status={status} className="size-3.5" />
-              {voteSummary[status]}
+              <AnimatedCount value={voteSummary[status]} />
             </Badge>
           ))}
-          <Badge variant="secondary">{isCompleteVote ? "Ready to submit" : "Incomplete vote"}</Badge>
+          <Badge variant="secondary" className="transition-transform duration-200">
+            {isCompleteVote ? "Ready to submit" : "Incomplete vote"}
+          </Badge>
         </div>
       </section>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden app-enter-soft">
         <CardHeader className="border-b">
           <CardTitle>Set availability</CardTitle>
           <CardDescription>Use range selection first, then fine-tune individual dates.</CardDescription>
@@ -485,7 +528,12 @@ export function PollClientPage({
               <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
                 <div className="rounded-xl border bg-muted/20 p-4">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium">Current vote</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">Current vote</p>
+                      <Badge variant={isCompleteVote ? "secondary" : "outline"} className="h-6">
+                        Missing: <AnimatedCount value={missingOptionIds.length} />
+                      </Badge>
+                    </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span>
@@ -508,7 +556,7 @@ export function PollClientPage({
                     {VOTE_STATUS_ORDER.map((status) => (
                       <Badge key={status} variant="outline">
                         <VoteStatusIcon status={status} className="size-3.5" />
-                        {voteSummary[status]}
+                        <AnimatedCount value={voteSummary[status]} />
                       </Badge>
                     ))}
                   </div>
@@ -532,7 +580,7 @@ export function PollClientPage({
                   />
                 </div>
 
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? <p className="text-sm text-destructive app-enter-scale">{error}</p> : null}
 
                 <div className="space-y-2">
                   <Button type="submit" className="w-full" disabled={isLoading}>
@@ -609,7 +657,7 @@ export function PollClientPage({
                 <DialogHeader>
                   <DialogTitle>Finish unselected dates?</DialogTitle>
                   <DialogDescription>
-                    You still have {missingOptionIds.length} unselected{" "}
+                    You still have <AnimatedCount value={missingOptionIds.length} /> unselected{" "}
                     {missingOptionIds.length === 1 ? "date" : "dates"}. Choose a status first, then decide
                     whether to keep editing or send immediately.
                   </DialogDescription>

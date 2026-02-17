@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import Script from "next/script"
 import { AppShell } from "@/components/app/AppShell"
+import { AppProviders } from "@/components/app/AppProviders"
 import { getRequestUserAndPolls } from "@/lib/date-poll/request-context"
 import "./globals.css"
 
@@ -55,9 +56,11 @@ export default async function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
-        <AppShell initialUser={currentUser} initialAccountPolls={initialAccountPolls}>
-          {children}
-        </AppShell>
+        <AppProviders>
+          <AppShell initialUser={currentUser} initialAccountPolls={initialAccountPolls}>
+            {children}
+          </AppShell>
+        </AppProviders>
       </body>
     </html>
   )

@@ -48,7 +48,7 @@ export default async function PollResultsPage({
   return (
     <main className="p-4 sm:p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-6">
-        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8 app-enter">
           <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
           <div className="relative flex flex-wrap items-start justify-between gap-4">

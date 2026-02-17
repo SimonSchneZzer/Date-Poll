@@ -28,18 +28,22 @@ function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   )
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
-  return (
-    <tr
-      data-slot="table-row"
-      className={cn(
-        "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
-        className
-      )}
-      {...props}
-    />
-  )
-}
+const TableRow = React.forwardRef<HTMLTableRowElement, React.ComponentProps<"tr">>(
+  ({ className, ...props }, ref) => {
+    return (
+      <tr
+        ref={ref}
+        data-slot="table-row"
+        className={cn(
+          "hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors",
+          className
+        )}
+        {...props}
+      />
+    )
+  }
+)
+TableRow.displayName = "TableRow"
 
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return (

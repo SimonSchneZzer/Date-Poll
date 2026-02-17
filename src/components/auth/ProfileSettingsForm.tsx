@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast-provider"
 import type { AuthUser } from "@/lib/auth/supabase-auth"
 import { clearTrackedPolls } from "@/lib/date-poll/tracked-polls"
 
@@ -36,6 +37,7 @@ type DeleteResponse = {
 
 export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [fullName, setFullName] = useState(initialUser.fullName ?? "")
   const [email, setEmail] = useState(initialUser.email ?? "")
   const [newPassword, setNewPassword] = useState("")
@@ -72,7 +74,13 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
 
       const payload = (await response.json().catch(() => null)) as ProfileResponse | null
       if (!response.ok) {
-        setProfileError(payload?.error ?? "Could not save profile")
+        const message = payload?.error ?? "Could not save profile"
+        setProfileError(message)
+        toast({
+          variant: "error",
+          title: "Profile update failed",
+          description: message,
+        })
         return
       }
 
@@ -82,9 +90,19 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
       }
 
       setProfileMessage(payload?.message ?? "Profile updated")
+      toast({
+        variant: "success",
+        title: "Profile updated",
+        description: payload?.message ?? "Your profile changes have been saved.",
+      })
       router.refresh()
     } catch {
       setProfileError("Could not save profile")
+      toast({
+        variant: "error",
+        title: "Profile update failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsSavingProfile(false)
     }
@@ -97,11 +115,21 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
 
     if (newPassword.length < 6) {
       setPasswordError("Password must be at least 6 characters")
+      toast({
+        variant: "error",
+        title: "Password too short",
+        description: "Password must be at least 6 characters.",
+      })
       return
     }
 
     if (newPassword !== confirmPassword) {
       setPasswordError("Passwords do not match")
+      toast({
+        variant: "error",
+        title: "Password mismatch",
+        description: "Password and confirmation must match.",
+      })
       return
     }
 
@@ -118,16 +146,32 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
 
       const payload = (await response.json().catch(() => null)) as ProfileResponse | null
       if (!response.ok) {
-        setPasswordError(payload?.error ?? "Could not update password")
+        const message = payload?.error ?? "Could not update password"
+        setPasswordError(message)
+        toast({
+          variant: "error",
+          title: "Password update failed",
+          description: message,
+        })
         return
       }
 
       setNewPassword("")
       setConfirmPassword("")
       setPasswordMessage("Password updated")
+      toast({
+        variant: "success",
+        title: "Password updated",
+        description: "Your password has been changed.",
+      })
       router.refresh()
     } catch {
       setPasswordError("Could not update password")
+      toast({
+        variant: "error",
+        title: "Password update failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsSavingPassword(false)
     }
@@ -151,6 +195,11 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
     setDeleteError(null)
     if (deleteConfirmInput !== "DELETE") {
       setDeleteError("Type DELETE to confirm")
+      toast({
+        variant: "error",
+        title: "Confirmation required",
+        description: "Type DELETE to confirm account deletion.",
+      })
       return
     }
 
@@ -167,14 +216,30 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
 
       const payload = (await response.json().catch(() => null)) as DeleteResponse | null
       if (!response.ok) {
-        setDeleteError(payload?.error ?? "Could not delete account")
+        const message = payload?.error ?? "Could not delete account"
+        setDeleteError(message)
+        toast({
+          variant: "error",
+          title: "Account deletion failed",
+          description: message,
+        })
         return
       }
 
       clearTrackedPolls()
+      toast({
+        variant: "success",
+        title: "Account deleted",
+        description: "Your account has been removed.",
+      })
       window.location.href = "/register"
     } catch {
       setDeleteError("Could not delete account")
+      toast({
+        variant: "error",
+        title: "Account deletion failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsDeletingAccount(false)
     }
@@ -182,7 +247,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8 app-enter">
         <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -203,7 +268,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="h-full">
+        <Card className="h-full app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2">
               <UserRound className="text-muted-foreground size-4" />
@@ -237,8 +302,8 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
                   required
                 />
               </div>
-              {profileError ? <p className="text-sm text-destructive">{profileError}</p> : null}
-              {profileMessage ? <p className="text-sm text-emerald-600">{profileMessage}</p> : null}
+              {profileError ? <p className="text-sm text-destructive app-enter-scale">{profileError}</p> : null}
+              {profileMessage ? <p className="text-sm text-emerald-600 app-enter-scale">{profileMessage}</p> : null}
               <Button type="submit" className="w-full sm:w-auto" disabled={isSavingProfile}>
                 {isSavingProfile ? (
                   <>
@@ -256,7 +321,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
           </CardContent>
         </Card>
 
-        <Card className="h-full">
+        <Card className="h-full app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Security</CardTitle>
             <CardDescription>Set a new password for your account.</CardDescription>
@@ -291,8 +356,8 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
                   required
                 />
               </div>
-              {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
-              {passwordMessage ? <p className="text-sm text-emerald-600">{passwordMessage}</p> : null}
+              {passwordError ? <p className="text-sm text-destructive app-enter-scale">{passwordError}</p> : null}
+              {passwordMessage ? <p className="text-sm text-emerald-600 app-enter-scale">{passwordMessage}</p> : null}
               <Button type="submit" className="w-full sm:w-auto" disabled={isSavingPassword}>
                 {isSavingPassword ? (
                   <>
@@ -307,7 +372,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
           </CardContent>
         </Card>
 
-        <Card className="border-destructive/40 lg:col-span-2">
+        <Card className="border-destructive/40 lg:col-span-2 app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle className="text-destructive">Danger zone</CardTitle>
             <CardDescription>Log out or permanently delete your account.</CardDescription>
@@ -316,7 +381,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 type="button"
-                variant="outline"
+                variant="destructive"
                 className="w-full sm:w-auto"
                 onClick={logout}
                 disabled={isLoggingOut}
@@ -345,7 +410,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
               </Button>
             </div>
 
-            {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+            {deleteError ? <p className="text-sm text-destructive app-enter-scale">{deleteError}</p> : null}
           </CardContent>
         </Card>
       </div>
@@ -383,7 +448,7 @@ export function ProfileSettingsForm({ initialUser }: ProfileSettingsFormProps) {
             />
           </div>
 
-          {deleteError ? <p className="text-sm text-destructive">{deleteError}</p> : null}
+          {deleteError ? <p className="text-sm text-destructive app-enter-scale">{deleteError}</p> : null}
 
           <DialogFooter>
             <Button

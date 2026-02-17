@@ -8,13 +8,16 @@ import type { DateRange } from "react-day-picker"
 
 import { DateRangePicker } from "@/components/date-poll/DateRangePicker"
 import { Badge } from "@/components/ui/badge"
+import { AnimatedCount } from "@/components/ui/animated-count"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast-provider"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath } from "@/lib/auth/supabase-auth"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
+import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 
 type CreateResult = {
   pollId: string
@@ -23,6 +26,7 @@ type CreateResult = {
 
 export function CreatePollForm() {
   const router = useRouter()
+  const { toast } = useToast()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [dateRange, setDateRange] = useState<DateRange>()
@@ -51,6 +55,7 @@ export function CreatePollForm() {
     if (typeof window === "undefined") return result.path
     return `${window.location.origin}${result.path}`
   }, [result])
+  const bindOptionBadgeRef = useFlipListAnimation(options)
 
   useEffect(() => {
     if (copyState === "idle") return
@@ -65,8 +70,18 @@ export function CreatePollForm() {
     try {
       await navigator.clipboard.writeText(shareUrl)
       setCopyState("copied")
+      toast({
+        variant: "success",
+        title: "Copied",
+        description: "Share link copied to clipboard.",
+      })
     } catch {
       setCopyState("failed")
+      toast({
+        variant: "error",
+        title: "Copy failed",
+        description: "Could not copy the share link.",
+      })
     }
   }
 
@@ -77,6 +92,11 @@ export function CreatePollForm() {
 
     if (options.length < 2) {
       setError("Select a date range with at least two dates")
+      toast({
+        variant: "error",
+        title: "Missing date range",
+        description: "Select at least two dates before creating a poll.",
+      })
       return
     }
 
@@ -103,14 +123,30 @@ export function CreatePollForm() {
 
         if ("errors" in payload && payload.errors?.length) {
           setError(payload.errors.join(". "))
+          toast({
+            variant: "error",
+            title: "Could not create poll",
+            description: payload.errors.join(". "),
+          })
         } else {
-          setError(("error" in payload ? payload.error : undefined) ?? "Could not create poll")
+          const message = ("error" in payload ? payload.error : undefined) ?? "Could not create poll"
+          setError(message)
+          toast({
+            variant: "error",
+            title: "Could not create poll",
+            description: message,
+          })
         }
         return
       }
 
       if (!("pollId" in payload)) {
         setError("Could not create poll")
+        toast({
+          variant: "error",
+          title: "Could not create poll",
+          description: "The server response was incomplete.",
+        })
         return
       }
 
@@ -122,8 +158,18 @@ export function CreatePollForm() {
         path: createdPoll.path,
         role: "organizer",
       })
+      toast({
+        variant: "success",
+        title: "Poll created",
+        description: "Your poll is ready to share.",
+      })
     } catch {
       setError("Could not create poll")
+      toast({
+        variant: "error",
+        title: "Could not create poll",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsLoading(false)
     }
@@ -131,7 +177,7 @@ export function CreatePollForm() {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8 app-enter">
         <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -146,13 +192,15 @@ export function CreatePollForm() {
           </div>
           <div className="bg-background/80 text-muted-foreground flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm shadow-sm backdrop-blur">
             <CalendarDays className="size-4 shrink-0" />
-            <span>{options.length} date option{options.length === 1 ? "" : "s"} selected</span>
+            <span>
+              <AnimatedCount value={options.length} /> date option{options.length === 1 ? "" : "s"} selected
+            </span>
           </div>
         </div>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Poll details</CardTitle>
             <CardDescription>Define title, optional context and the date range.</CardDescription>
@@ -188,11 +236,12 @@ export function CreatePollForm() {
                 <label className="text-sm font-medium">Date range</label>
                 <DateRangePicker value={dateRange} onChange={setDateRange} />
                 <p className="text-muted-foreground text-xs">
-                  Generated options: {options.length > 0 ? options.length : "none selected"}
+                  Generated options:{" "}
+                  {options.length > 0 ? <AnimatedCount value={options.length} /> : "none selected"}
                 </p>
               </div>
 
-              {error ? <p className="text-sm text-destructive">{error}</p> : null}
+              {error ? <p className="text-sm text-destructive app-enter-scale">{error}</p> : null}
 
               {!result ? (
                 <Button type="submit" className="w-full sm:w-auto" disabled={isLoading}>
@@ -204,7 +253,7 @@ export function CreatePollForm() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Overview</CardTitle>
             <CardDescription>Review generated date options and share after creation.</CardDescription>
@@ -214,9 +263,13 @@ export function CreatePollForm() {
               <div className="max-h-56 overflow-auto rounded-lg border p-3">
                 <div className="flex flex-wrap gap-2">
                   {options.map((option) => (
-                    <Badge key={option} variant="outline">
-                      {option}
-                    </Badge>
+                    <span
+                      key={option}
+                      ref={bindOptionBadgeRef(option)}
+                      className="motion-safe:will-change-transform"
+                    >
+                      <Badge variant="outline">{option}</Badge>
+                    </span>
                   ))}
                 </div>
               </div>
@@ -227,7 +280,7 @@ export function CreatePollForm() {
             )}
 
             {result ? (
-              <div className="space-y-2 rounded-lg border p-3">
+              <div className="space-y-2 rounded-lg border p-3 app-enter-scale">
                 <p className="text-sm font-medium">Share</p>
                 <TooltipProvider>
                   <div className="flex flex-col gap-2">

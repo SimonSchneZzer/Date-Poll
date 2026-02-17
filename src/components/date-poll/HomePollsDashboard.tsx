@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 
 import { Badge } from "@/components/ui/badge"
+import { AnimatedCount } from "@/components/ui/animated-count"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -17,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
 import {
@@ -29,6 +31,7 @@ import {
   removeTrackedPoll,
   subscribeTrackedPolls,
 } from "@/lib/date-poll/tracked-polls"
+import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 
 type DashboardPoll = {
   id: string
@@ -110,8 +113,11 @@ function PollListSection({
   isMutatingPolls: boolean
   onRemovePoll: (poll: DashboardPoll) => void
 }) {
+  const pollIds = useMemo(() => polls.map((poll) => poll.id), [polls])
+  const bindPollRowRef = useFlipListAnimation(pollIds)
+
   return (
-    <Card className="h-full">
+    <Card className="h-full app-enter-soft">
       <CardHeader className="border-b">
         <CardTitle>{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
@@ -124,7 +130,11 @@ function PollListSection({
         ) : (
           <TooltipProvider>
             {polls.map((poll) => (
-              <div key={poll.id} className="group flex items-center gap-2">
+              <div
+                key={poll.id}
+                ref={bindPollRowRef(poll.id)}
+                className="group flex items-center gap-2 transition-[transform,opacity] duration-200"
+              >
                 <Link
                   href={poll.path}
                   className="hover:bg-accent/40 flex min-w-0 flex-1 items-center justify-between rounded-md border bg-background/70 px-3 py-2 transition-colors"
@@ -177,6 +187,7 @@ export function HomePollsDashboard({
   initialAccountPolls: AccountPollSummary[]
 }) {
   const router = useRouter()
+  const { toast } = useToast()
   const trackedPolls = useSyncExternalStore(
     subscribeTrackedPolls,
     getTrackedPollsSnapshot,
@@ -289,6 +300,11 @@ export function HomePollsDashboard({
     const targetPath = parsePollPath(joinInput)
     if (!targetPath) {
       setJoinError("Enter a valid poll link or poll ID.")
+      toast({
+        variant: "error",
+        title: "Invalid link",
+        description: "Enter a valid poll link or poll ID.",
+      })
       return
     }
 
@@ -302,6 +318,10 @@ export function HomePollsDashboard({
 
   function continueAsGuest() {
     if (!pendingGuestJoinPath) return
+    toast({
+      title: "Continuing as guest",
+      description: "You can still vote without an account.",
+    })
     router.push(pendingGuestJoinPath)
     setPendingGuestJoinPath(null)
   }
@@ -336,6 +356,11 @@ export function HomePollsDashboard({
   async function removePoll(pollId: string): Promise<boolean> {
     if (!initialUser) {
       removeTrackedPoll(pollId)
+      toast({
+        variant: "success",
+        title: "Poll removed",
+        description: "This poll was removed from your list.",
+      })
       return true
     }
 
@@ -347,11 +372,22 @@ export function HomePollsDashboard({
       setAccountPolls([])
       router.refresh()
       setRemoveError("Your session has expired. Please sign in again.")
+      toast({
+        variant: "error",
+        title: "Session expired",
+        description: "Please sign in again.",
+      })
       return false
     }
 
     if (!response.ok) {
-      setRemoveError(await readMutationError(response, "Could not update poll membership."))
+      const message = await readMutationError(response, "Could not update poll membership.")
+      setRemoveError(message)
+      toast({
+        variant: "error",
+        title: "Could not update poll",
+        description: message,
+      })
       return false
     }
 
@@ -367,6 +403,11 @@ export function HomePollsDashboard({
 
     removeTrackedPoll(pollId)
     router.refresh()
+    toast({
+      variant: "success",
+      title: "Poll updated",
+      description: "The poll list has been refreshed.",
+    })
     return true
   }
 
@@ -388,7 +429,7 @@ export function HomePollsDashboard({
   return (
     <main className="p-4 sm:p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-6">
-        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8">
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-background via-muted/20 to-background p-6 sm:p-8 app-enter">
           <div className="pointer-events-none absolute -top-20 -right-12 size-44 rounded-full bg-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute -bottom-24 -left-10 size-52 rounded-full bg-emerald-500/10 blur-3xl" />
           <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -411,12 +452,16 @@ export function HomePollsDashboard({
             </div>
           </div>
           <div className="relative mt-4 flex flex-wrap gap-2">
-            <Badge variant="secondary">Created: {createdPolls.length}</Badge>
-            <Badge variant="secondary">Joined: {joinedPolls.length}</Badge>
+            <Badge variant="secondary">
+              Created: <AnimatedCount value={createdPolls.length} />
+            </Badge>
+            <Badge variant="secondary">
+              Joined: <AnimatedCount value={joinedPolls.length} />
+            </Badge>
           </div>
         </section>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <CardTitle>Quick actions</CardTitle>
             <CardDescription>
@@ -444,12 +489,12 @@ export function HomePollsDashboard({
                 Join poll
               </Button>
             </form>
-            {joinError ? <p className="text-sm text-destructive">{joinError}</p> : null}
+            {joinError ? <p className="text-sm text-destructive app-enter-scale">{joinError}</p> : null}
           </CardContent>
         </Card>
 
         {!hasAnyPoll ? (
-          <Card>
+          <Card className="app-enter-soft">
             <CardHeader className="border-b">
               <CardTitle>No polls yet</CardTitle>
               <CardDescription>

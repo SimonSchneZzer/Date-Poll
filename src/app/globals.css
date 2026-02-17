@@ -86,6 +86,10 @@
   --app-glow-bottom: oklch(0.9 0.07 158 / 22%);
   --app-grid-line: oklch(0.56 0.03 218 / 10%);
   --app-surface-shadow: 0 1px 1px oklch(0.12 0.02 244 / 5%), 0 12px 30px oklch(0.34 0.08 236 / 12%);
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
+  --motion-slow: 320ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
 }
 
 .dark {
@@ -267,6 +271,9 @@
     @apply bg-background text-foreground;
     min-height: 100dvh;
     text-rendering: optimizeLegibility;
+    transition-property: background-color, color, background-image;
+    transition-duration: var(--motion-normal);
+    transition-timing-function: var(--motion-ease-standard);
     background-image:
       radial-gradient(1100px 520px at -10% -20%, var(--app-glow-top-left), transparent 60%),
       radial-gradient(900px 480px at 110% -10%, var(--app-glow-top-right), transparent 55%),
@@ -285,6 +292,9 @@
     box-shadow: var(--app-surface-shadow);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    transition-property: background-color, border-color, box-shadow, background-image, color;
+    transition-duration: var(--motion-normal);
+    transition-timing-function: var(--motion-ease-standard);
   }
 
   .graphite [data-slot="card"],
@@ -405,4 +415,65 @@
   .rainbow ::-webkit-scrollbar-thumb {
     background-color: rgb(104 120 255 / 55%);
   }
+}
+
+@layer components {
+  @keyframes app-value-pop {
+    0% {
+      transform: scale(0.88);
+      opacity: 0.7;
+    }
+    62% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes app-theme-flash {
+    0% {
+      filter: saturate(0.94) brightness(0.985);
+    }
+    50% {
+      filter: saturate(1.08) brightness(1.015);
+    }
+    100% {
+      filter: saturate(1) brightness(1);
+    }
+  }
+
+  .app-enter {
+    @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-300;
+  }
+
+  .app-enter-soft {
+    @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-300;
+  }
+
+  .app-enter-scale {
+    @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-300;
+  }
+
+  .app-value-pop {
+    animation: app-value-pop 220ms var(--motion-ease-standard);
+    will-change: transform, opacity;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.theme-switching body {
+  animation: app-theme-flash 260ms var(--motion-ease-standard);
 }

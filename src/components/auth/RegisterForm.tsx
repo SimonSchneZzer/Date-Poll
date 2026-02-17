@@ -8,6 +8,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { useToast } from "@/components/ui/toast-provider"
 
 type RegisterFormProps = {
   nextPath: string
@@ -18,6 +19,7 @@ type RegisterFormProps = {
 
 export function RegisterForm({ nextPath, nextPathLabel, configured, initialError }: RegisterFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -33,11 +35,21 @@ export function RegisterForm({ nextPath, nextPathLabel, configured, initialError
 
     if (!configured) {
       setError("Supabase is not configured yet")
+      toast({
+        variant: "error",
+        title: "Auth not configured",
+        description: "Configure Supabase credentials first.",
+      })
       return
     }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match")
+      toast({
+        variant: "error",
+        title: "Password mismatch",
+        description: "Password and confirmation must match.",
+      })
       return
     }
 
@@ -61,26 +73,47 @@ export function RegisterForm({ nextPath, nextPathLabel, configured, initialError
         | null
 
       if (!response.ok) {
-        setError(payload?.error ?? "Sign up failed")
+        const message = payload?.error ?? "Sign up failed"
+        setError(message)
+        toast({
+          variant: "error",
+          title: "Sign up failed",
+          description: message,
+        })
         return
       }
 
       if (payload?.requiresEmailConfirmation) {
         setSuccess("Account created. Check your email to confirm your account, then sign in.")
+        toast({
+          variant: "success",
+          title: "Account created",
+          description: "Check your email to confirm your account.",
+        })
         return
       }
 
+      toast({
+        variant: "success",
+        title: "Account created",
+        description: `Redirecting to ${nextPathLabel}.`,
+      })
       router.push(nextPath)
       router.refresh()
     } catch {
       setError("Sign up failed")
+      toast({
+        variant: "error",
+        title: "Sign up failed",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Card className="w-full overflow-hidden">
+    <Card className="w-full overflow-hidden app-enter-soft">
       <CardHeader className="border-b">
         <CardTitle className="text-xl sm:text-2xl">Create account</CardTitle>
         <CardDescription>
@@ -156,9 +189,9 @@ export function RegisterForm({ nextPath, nextPathLabel, configured, initialError
           </Button>
         </form>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p className="text-sm text-destructive app-enter-scale">{error}</p> : null}
         {success ? (
-          <p className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+          <p className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-400 app-enter-scale">
             {success}
           </p>
         ) : null}

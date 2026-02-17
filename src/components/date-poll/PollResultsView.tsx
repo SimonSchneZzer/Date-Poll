@@ -21,6 +21,7 @@ import {
   VoteStatusIcon,
 } from "@/components/date-poll/vote-status-ui"
 import { Badge } from "@/components/ui/badge"
+import { AnimatedCount } from "@/components/ui/animated-count"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -34,6 +35,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   formatPollOptionLabel,
@@ -41,6 +43,7 @@ import {
   getPollOptionTimestamp,
 } from "@/lib/date-poll/date-utils"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
+import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 import { cn } from "@/lib/utils"
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000
@@ -299,10 +302,12 @@ function TableExportMenu({
   table,
   fileBaseName,
   triggerClassName,
+  onExport,
 }: {
   table: ExportTable
   fileBaseName: string
   triggerClassName?: string
+  onExport?: (message: string) => void
 }) {
   return (
     <Popover>
@@ -323,7 +328,10 @@ function TableExportMenu({
           variant="ghost"
           size="sm"
           className="w-full justify-start"
-          onClick={() => printTableAsPdf(table)}
+          onClick={() => {
+            printTableAsPdf(table)
+            onExport?.("Opened print dialog for PDF export.")
+          }}
         >
           <Printer className="size-4" />
           PDF (Print)
@@ -333,13 +341,14 @@ function TableExportMenu({
           variant="ghost"
           size="sm"
           className="w-full justify-start"
-          onClick={() =>
+          onClick={() => {
             downloadFile({
               fileName: `${fileBaseName}.xls`,
               mimeType: "application/vnd.ms-excel;charset=utf-8",
               content: "\uFEFF" + toExcelHtmlContent(table),
             })
-          }
+            onExport?.("Downloaded Excel file.")
+          }}
         >
           <FileSpreadsheet className="size-4" />
           Excel (.xls)
@@ -349,13 +358,14 @@ function TableExportMenu({
           variant="ghost"
           size="sm"
           className="w-full justify-start"
-          onClick={() =>
+          onClick={() => {
             downloadFile({
               fileName: `${fileBaseName}.csv`,
               mimeType: "text/csv;charset=utf-8",
               content: "\uFEFF" + toDelimitedContent(table, ","),
             })
-          }
+            onExport?.("Downloaded CSV file.")
+          }}
         >
           <FileText className="size-4" />
           CSV
@@ -365,13 +375,14 @@ function TableExportMenu({
           variant="ghost"
           size="sm"
           className="w-full justify-start"
-          onClick={() =>
+          onClick={() => {
             downloadFile({
               fileName: `${fileBaseName}.tsv`,
               mimeType: "text/tab-separated-values;charset=utf-8",
               content: toDelimitedContent(table, "\t"),
             })
-          }
+            onExport?.("Downloaded TSV file.")
+          }}
         >
           <FileText className="size-4" />
           TSV
@@ -381,13 +392,14 @@ function TableExportMenu({
           variant="ghost"
           size="sm"
           className="w-full justify-start"
-          onClick={() =>
+          onClick={() => {
             downloadFile({
               fileName: `${fileBaseName}.json`,
               mimeType: "application/json;charset=utf-8",
               content: toJsonContent(table),
             })
-          }
+            onExport?.("Downloaded JSON file.")
+          }}
         >
           <FileBraces className="size-4" />
           JSON
@@ -404,6 +416,7 @@ export function PollResultsView({
   poll: PollView
   canManageVotes?: boolean
 }) {
+  const { toast } = useToast()
   const [pollState, setPollState] = useState(poll)
   const [removeVoteState, setRemoveVoteState] = useState<RemoveVoteState>(null)
   const [isRemovingVote, setIsRemovingVote] = useState(false)
@@ -422,6 +435,11 @@ export function PollResultsView({
       participant.fullName.toLocaleLowerCase().includes(normalizedParticipantQuery)
     )
   }, [normalizedParticipantQuery, pollState.participants])
+  const filteredParticipantIds = useMemo(
+    () => filteredParticipants.map((participant) => participant.id),
+    [filteredParticipants]
+  )
+  const bindParticipantRowRef = useFlipListAnimation(filteredParticipantIds)
   const rankedOptions = useMemo(
     () =>
       [...sortedOptions]
@@ -524,6 +542,11 @@ export function PollResultsView({
       (groupA, groupB) => groupA.entries[0].rank - groupB.entries[0].rank
     )
   }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
+  const groupedQuickReadKeys = useMemo(
+    () => groupedQuickReadOptions.map((groupedOptions) => groupedOptions.key),
+    [groupedQuickReadOptions]
+  )
+  const bindQuickReadGroupRef = useFlipListAnimation(groupedQuickReadKeys)
   const participantColSpan = sortedOptions.length + 1 + (canManageVotes ? 1 : 0)
   const participantColumnHeadClass = isParticipantColumnCollapsed
     ? "sticky left-0 z-20 w-11 min-w-11 border-r bg-background px-0 text-center"
@@ -579,6 +602,14 @@ export function PollResultsView({
     [displayedQuickReadOptions, pollState.title]
   )
 
+  function notifyExport(message: string) {
+    toast({
+      variant: "success",
+      title: "Export complete",
+      description: message,
+    })
+  }
+
   function updateQuickReadCount(nextCount: number) {
     const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxCount)
     if (nextValue === quickReadCount) return
@@ -617,11 +648,27 @@ export function PollResultsView({
 
       if (!response.ok) {
         if (payload && "errors" in payload && payload.errors?.length) {
-          setRemoveVoteError(payload.errors.join(". "))
+          const message = payload.errors.join(". ")
+          setRemoveVoteError(message)
+          toast({
+            variant: "error",
+            title: "Could not remove votes",
+            description: message,
+          })
         } else if (payload && "error" in payload && payload.error) {
           setRemoveVoteError(payload.error)
+          toast({
+            variant: "error",
+            title: "Could not remove votes",
+            description: payload.error,
+          })
         } else {
           setRemoveVoteError("Could not remove votes")
+          toast({
+            variant: "error",
+            title: "Could not remove votes",
+            description: "Please try again in a moment.",
+          })
         }
         return
       }
@@ -629,11 +676,26 @@ export function PollResultsView({
       if (payload && "poll" in payload && payload.poll) {
         setPollState(payload.poll)
         setRemoveVoteState(null)
+        toast({
+          variant: "success",
+          title: "Votes removed",
+          description: "Participant votes were removed successfully.",
+        })
       } else {
         setRemoveVoteError("Could not remove votes")
+        toast({
+          variant: "error",
+          title: "Could not remove votes",
+          description: "The server response was incomplete.",
+        })
       }
     } catch {
       setRemoveVoteError("Could not remove votes")
+      toast({
+        variant: "error",
+        title: "Could not remove votes",
+        description: "Please try again in a moment.",
+      })
     } finally {
       setIsRemovingVote(false)
     }
@@ -642,7 +704,7 @@ export function PollResultsView({
   return (
     <div className="space-y-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden app-enter-soft">
           <CardHeader className="border-b">
             <div className="space-y-1">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -651,6 +713,7 @@ export function PollResultsView({
                   table={overviewExportTable}
                   fileBaseName={`${exportBaseName}-overview`}
                   triggerClassName="justify-self-end self-start"
+                  onExport={notifyExport}
                 />
               </div>
               <div className="pr-1">
@@ -687,7 +750,7 @@ export function PollResultsView({
                         <TableCell className="whitespace-normal">{formatPollOptionLabel(option.value)}</TableCell>
                         {VOTE_STATUS_ORDER.map((status) => (
                           <TableCell key={status} className="text-center font-medium">
-                            {countByStatus[status]}
+                            <AnimatedCount value={countByStatus[status]} />
                           </TableCell>
                         ))}
                       </TableRow>
@@ -698,14 +761,18 @@ export function PollResultsView({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">Participants: {pollState.participants.length}</Badge>
-              <Badge variant="outline">Options: {sortedOptions.length}</Badge>
+              <Badge variant="outline">
+                Participants: <AnimatedCount value={pollState.participants.length} />
+              </Badge>
+              <Badge variant="outline">
+                Options: <AnimatedCount value={sortedOptions.length} />
+              </Badge>
               <Badge variant="outline">{canManageVotes ? "Organizer view" : "Participant view"}</Badge>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start">
+        <Card className="overflow-hidden xl:sticky xl:top-4 xl:self-start app-enter-soft">
           <CardHeader className="border-b">
             <div className="space-y-1">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -714,6 +781,7 @@ export function PollResultsView({
                   table={insightsExportTable}
                   fileBaseName={`${exportBaseName}-insights`}
                   triggerClassName="justify-self-end self-start"
+                  onExport={notifyExport}
                 />
               </div>
               <div className="pr-1">
@@ -729,7 +797,14 @@ export function PollResultsView({
                   <p className="text-muted-foreground text-[11px]">How many top options should be highlighted.</p>
                 </div>
                 <Badge variant="secondary" className="text-[11px]">
-                  {rankedOptions.length === 0 ? "0 / 0" : `${quickReadValue} / ${rankedOptions.length}`}
+                  {rankedOptions.length === 0 ? (
+                    "0 / 0"
+                  ) : (
+                    <>
+                      <AnimatedCount value={quickReadValue} /> /{" "}
+                      <AnimatedCount value={rankedOptions.length} />
+                    </>
+                  )}
                 </Badge>
               </div>
 
@@ -790,11 +865,15 @@ export function PollResultsView({
               <p className="text-muted-foreground text-sm">No options available yet.</p>
             ) : (
               groupedQuickReadOptions.map((groupedOptions) => (
-                <div key={groupedOptions.key} className="space-y-1.5">
+                <div
+                  key={groupedOptions.key}
+                  ref={bindQuickReadGroupRef(groupedOptions.key)}
+                  className="space-y-1.5 motion-safe:will-change-transform"
+                >
                   {groupedOptions.group ? (
                     <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                        Group {groupedOptions.group.groupNumber}
+                        Group <AnimatedCount value={groupedOptions.group.groupNumber} />
                       </Badge>
                       <Badge
                         variant={
@@ -804,7 +883,7 @@ export function PollResultsView({
                         }
                         className="h-5 px-1.5 text-[10px]"
                       >
-                        Score {groupedOptions.group.score}
+                        Score <AnimatedCount value={groupedOptions.group.score} />
                       </Badge>
                       <span className="truncate">{formatConsecutiveRange(groupedOptions.group.range)}</span>
                     </div>
@@ -820,15 +899,20 @@ export function PollResultsView({
                     />
                     <div className="space-y-1.5">
                       {groupedOptions.entries.map((entry) => (
-                        <div key={entry.item.option.id} className="rounded-md border bg-background/80 px-2.5 py-2">
+                        <div
+                          key={entry.item.option.id}
+                          className="rounded-md border bg-background/80 px-2.5 py-2 app-enter-soft"
+                        >
                           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1">
                             <p className="truncate text-sm font-medium leading-tight">
                               {formatPollOptionLabel(entry.item.option.value)}
                             </p>
                             <span className="text-muted-foreground text-[11px] whitespace-nowrap">
-                              Score {entry.item.score}
+                              Score <AnimatedCount value={entry.item.score} />
                             </span>
-                            <p className="text-muted-foreground text-[11px] font-medium">Top {entry.rank}</p>
+                            <p className="text-muted-foreground text-[11px] font-medium">
+                              Top <AnimatedCount value={entry.rank} />
+                            </p>
                             <div className="text-muted-foreground flex flex-wrap items-center justify-end gap-2 text-[11px]">
                               {VOTE_STATUS_ORDER.map((status) => {
                                 const countByStatus: Record<VoteStatus, number> = {
@@ -840,7 +924,7 @@ export function PollResultsView({
                                 return (
                                   <span key={status} className="inline-flex items-center gap-1">
                                     <VoteStatusIcon status={status} className="size-3.5" />
-                                    {countByStatus[status]}
+                                    <AnimatedCount value={countByStatus[status]} />
                                   </span>
                                 )
                               })}
@@ -857,7 +941,7 @@ export function PollResultsView({
         </Card>
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden app-enter-soft">
         <CardHeader className="border-b">
           <div className="space-y-1">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
@@ -866,6 +950,7 @@ export function PollResultsView({
                 table={participantExportTable}
                 fileBaseName={`${exportBaseName}-vote-matrix`}
                 triggerClassName="justify-self-end self-start"
+                onExport={notifyExport}
               />
             </div>
             <div className="pr-1">
@@ -960,7 +1045,11 @@ export function PollResultsView({
                     </TableRow>
                   ) : (
                     filteredParticipants.map((participant) => (
-                      <TableRow key={participant.id}>
+                      <TableRow
+                        key={participant.id}
+                        ref={bindParticipantRowRef(participant.id)}
+                        className="motion-safe:will-change-transform"
+                      >
                         <TableCell className={participantColumnCellClass}>
                           {isParticipantColumnCollapsed ? (
                             <Tooltip>
@@ -1041,7 +1130,7 @@ export function PollResultsView({
               {`Remove all votes from "${removeVoteState?.participantName ?? "this participant"}"? They can submit a new vote later.`}
             </DialogDescription>
           </DialogHeader>
-          {removeVoteError ? <p className="text-sm text-destructive">{removeVoteError}</p> : null}
+          {removeVoteError ? <p className="text-sm text-destructive app-enter-scale">{removeVoteError}</p> : null}
           <DialogFooter>
             <Button
               type="button"
