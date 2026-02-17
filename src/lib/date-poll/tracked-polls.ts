@@ -11,6 +11,7 @@ export type TrackedPoll = {
 
 const STORAGE_KEY = "date-poll:tracked-polls"
 const EVENT_NAME = "date-poll:tracked-polls-updated"
+const EMPTY_SERVER_TRACKED_POLLS: TrackedPoll[] = []
 
 let cachedRawValue: string | null | undefined
 let cachedSnapshot: TrackedPoll[] = []
@@ -59,7 +60,7 @@ function dispatchTrackedPollsUpdate() {
 }
 
 export function getTrackedPollsSnapshot(): TrackedPoll[] {
-  if (!isBrowser()) return []
+  if (!isBrowser()) return EMPTY_SERVER_TRACKED_POLLS
 
   const rawValue = window.localStorage.getItem(STORAGE_KEY)
   if (rawValue === cachedRawValue && cachedSnapshot) {
@@ -72,7 +73,7 @@ export function getTrackedPollsSnapshot(): TrackedPoll[] {
 }
 
 export function getTrackedPollsServerSnapshot(): TrackedPoll[] {
-  return []
+  return EMPTY_SERVER_TRACKED_POLLS
 }
 
 export function subscribeTrackedPolls(onStoreChange: () => void) {

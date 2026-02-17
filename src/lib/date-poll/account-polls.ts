@@ -33,7 +33,8 @@ export function mergeAccountAndTrackedPolls(args: {
     const existing = byPollId.get(trackedSummary.id)
 
     if (!existing) {
-      byPollId.set(trackedSummary.id, trackedSummary)
+      // For authenticated users, account polls are the source of truth.
+      // Ignore tracked-only entries so stale local state cannot resurrect deleted polls.
       continue
     }
 

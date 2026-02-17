@@ -34,10 +34,16 @@ type PollClientPageProps = {
   initialVotes?: Record<string, VoteStatus>
 }
 
-const VOTE_LABELS: Record<VoteStatus, string> = {
-  can: "can",
-  maybe: "maybe",
-  cant: "can't",
+const VOTE_ICONS: Record<VoteStatus, string> = {
+  can: "✅",
+  maybe: "⚠️",
+  cant: "❌",
+}
+
+const VOTE_ACTION_LABELS: Record<VoteStatus, string> = {
+  can: "Set can",
+  maybe: "Set maybe",
+  cant: "Set can't",
 }
 
 function formatOption(value: string): string {
@@ -342,26 +348,33 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {optionsByDate.map((option) => (
-                  <TableRow key={option.id}>
-                    <TableCell>{formatOption(option.value)}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        {(["can", "maybe", "cant"] as const).map((status) => (
-                          <Button
-                            key={status}
-                            type="button"
-                            size="sm"
-                            variant={votes[option.id] === status ? "default" : "outline"}
-                            onClick={() => setVote(option.id, status)}
-                          >
-                            {status === "can" ? "✅" : status === "maybe" ? "⚠️" : "❌"} {VOTE_LABELS[status]}
-                          </Button>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {optionsByDate.map((option) => {
+                  const optionLabel = formatOption(option.value)
+
+                  return (
+                    <TableRow key={option.id}>
+                      <TableCell>{optionLabel}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          {(["can", "maybe", "cant"] as const).map((status) => (
+                            <Button
+                              key={status}
+                              type="button"
+                              size="icon-sm"
+                              className="size-9"
+                              aria-label={`${VOTE_ACTION_LABELS[status]} for ${optionLabel}`}
+                              title={VOTE_ACTION_LABELS[status]}
+                              variant={votes[option.id] === status ? "default" : "outline"}
+                              onClick={() => setVote(option.id, status)}
+                            >
+                              <span aria-hidden>{VOTE_ICONS[status]}</span>
+                            </Button>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
 
