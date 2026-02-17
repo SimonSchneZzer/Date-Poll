@@ -46,10 +46,11 @@ export default async function PollPage({
       ? getParticipantVotesForGuest({ pollId, guestToken })
       : Promise.resolve(null),
   ])
-  const canViewResults = isOrganizer || existingVote !== null || guestVote !== null
+  const hasSubmittedVote = existingVote !== null || guestVote !== null
+  const canViewResults = isOrganizer || hasSubmittedVote
   const forceEditMode = query.edit === "1"
 
-  if (canViewResults && !forceEditMode) {
+  if (hasSubmittedVote && !forceEditMode) {
     redirect(`/poll/${pollId}/results`)
   }
 

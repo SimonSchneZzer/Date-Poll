@@ -212,6 +212,46 @@
   --app-surface-shadow: 0 1px 1px rgb(98 19 105 / 8%), 0 18px 40px rgb(196 40 122 / 22%);
 }
 
+.aurora {
+  --background: rgb(11 14 28);
+  --foreground: rgb(236 242 255);
+  --card: rgb(18 24 41 / 78%);
+  --card-foreground: rgb(236 242 255);
+  --popover: rgb(16 22 38 / 94%);
+  --popover-foreground: rgb(236 242 255);
+  --primary: rgb(103 225 255);
+  --primary-foreground: rgb(6 30 46);
+  --secondary: rgb(45 41 87 / 74%);
+  --secondary-foreground: rgb(231 233 255);
+  --muted: rgb(38 34 68 / 72%);
+  --muted-foreground: rgb(182 189 227);
+  --accent: rgb(240 91 193);
+  --accent-foreground: rgb(50 16 45);
+  --destructive: rgb(244 98 118);
+  --border: rgb(163 140 255 / 30%);
+  --input: rgb(163 140 255 / 24%);
+  --ring: rgb(118 205 255);
+  --chart-1: rgb(247 100 186);
+  --chart-2: rgb(255 172 79);
+  --chart-3: rgb(96 234 206);
+  --chart-4: rgb(120 175 255);
+  --chart-5: rgb(193 113 255);
+  --sidebar: rgb(12 18 33 / 88%);
+  --sidebar-foreground: rgb(236 242 255);
+  --sidebar-primary: rgb(103 225 255);
+  --sidebar-primary-foreground: rgb(6 30 46);
+  --sidebar-accent: rgb(44 51 102 / 80%);
+  --sidebar-accent-foreground: rgb(232 236 255);
+  --sidebar-border: rgb(163 140 255 / 30%);
+  --sidebar-ring: rgb(118 205 255);
+  --app-overlay-top: rgb(6 9 24 / 74%);
+  --app-glow-top-left: rgb(248 79 174 / 34%);
+  --app-glow-top-right: rgb(84 120 255 / 34%);
+  --app-glow-bottom: rgb(53 235 177 / 24%);
+  --app-grid-line: rgb(132 116 255 / 14%);
+  --app-surface-shadow: 0 1px 1px rgb(0 0 0 / 46%), 0 20px 56px rgb(6 9 22 / 58%);
+}
+
 .graphite {
   --background: oklch(0.255 0.007 255);
   --foreground: oklch(0.93 0.012 245);
@@ -384,6 +424,33 @@
     background-blend-mode: screen, screen, screen, screen, soft-light, normal, soft-light, soft-light;
   }
 
+  .aurora [data-slot="card"],
+  .aurora [data-slot="popover-content"],
+  .aurora [data-slot="dialog-content"] {
+    background-image: linear-gradient(
+      132deg,
+      rgb(255 255 255 / 10%) 0%,
+      rgb(247 84 189 / 22%) 24%,
+      rgb(255 173 84 / 14%) 46%,
+      rgb(78 226 255 / 18%) 74%,
+      rgb(168 112 255 / 24%) 100%
+    );
+  }
+
+  .aurora body {
+    background-image:
+      radial-gradient(980px 560px at -10% -14%, rgb(245 73 170 / 40%), transparent 62%),
+      radial-gradient(960px 520px at 112% -8%, rgb(86 121 255 / 42%), transparent 62%),
+      radial-gradient(900px 520px at 52% 116%, rgb(54 237 178 / 30%), transparent 64%),
+      radial-gradient(760px 420px at 50% 42%, rgb(255 170 90 / 20%), transparent 65%),
+      radial-gradient(700px 360px at 18% 78%, rgb(188 114 255 / 26%), transparent 64%),
+      linear-gradient(to bottom, rgb(6 8 24 / 76%) 0%, transparent 46%),
+      repeating-linear-gradient(0deg, transparent 0 33px, rgb(142 122 255 / 12%) 33px 34px),
+      repeating-linear-gradient(90deg, transparent 0 33px, rgb(77 198 255 / 10%) 33px 34px);
+    background-size: auto, auto, auto, auto, auto, auto, 34px 34px, 34px 34px;
+    background-blend-mode: screen, screen, screen, soft-light, soft-light, normal, soft-light, soft-light;
+  }
+
   [data-slot="table-head"] {
     letter-spacing: 0.01em;
   }
@@ -414,6 +481,10 @@
 
   .rainbow ::-webkit-scrollbar-thumb {
     background-color: rgb(104 120 255 / 55%);
+  }
+
+  .aurora ::-webkit-scrollbar-thumb {
+    background-color: rgb(136 147 255 / 58%);
   }
 }
 

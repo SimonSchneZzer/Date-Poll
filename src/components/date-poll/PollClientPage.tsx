@@ -234,7 +234,7 @@ export function PollClientPage({
       upsertTrackedPoll({
         id: updatedPoll.id,
         title: updatedPoll.title,
-        path: `/poll/${updatedPoll.id}`,
+        path: `/poll/${updatedPoll.id}/results`,
         role: "participant",
       })
 

@@ -849,11 +849,12 @@ export async function getPollSummariesForUser(userId: string): Promise<AccountPo
       const participantUpdatedAt = new Date(joinedRow.updatedAt).toISOString()
 
       if (!existing) {
+        const role = poll.creatorUserId === userId ? "organizer" : "participant"
         summaryByPollId.set(poll.id, {
           id: poll.id,
           title: poll.title,
-          path: `/poll/${poll.id}`,
-          role: poll.creatorUserId === userId ? "organizer" : "participant",
+          path: role === "participant" ? `/poll/${poll.id}/results` : `/poll/${poll.id}`,
+          role,
           lastInteractionAt: participantUpdatedAt,
         })
         continue
