@@ -873,7 +873,7 @@ export function PollResultsView({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6" suppressHydrationWarning>
           <TooltipProvider>
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="relative w-full sm:max-w-xs" suppressHydrationWarning>
@@ -922,6 +922,7 @@ export function PollResultsView({
                                   : "Collapse participant names"
                               }
                               aria-pressed={isParticipantColumnCollapsed}
+                              suppressHydrationWarning
                             >
                               {isParticipantColumnCollapsed ? (
                                 <ChevronRight className="size-4" />

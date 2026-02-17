@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  ChevronDown,
   Circle,
   Fish,
   ListX,
@@ -28,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { getCreatePollPath, normalizeNextPath, type AuthUser } from "@/lib/auth/supabase-auth"
@@ -68,9 +70,8 @@ function getCurrentTheme(): Theme {
   return document.documentElement.classList.contains("dark") ? "dark" : "light"
 }
 
-function getNextTheme(theme: Theme): Theme {
-  const currentIndex = THEME_ORDER.indexOf(theme)
-  return THEME_ORDER[(currentIndex + 1) % THEME_ORDER.length]
+function getNextLightDarkTheme(theme: Theme): Theme {
+  return theme === "dark" ? "light" : "dark"
 }
 
 function applyTheme(theme: Theme) {
@@ -80,6 +81,14 @@ function applyTheme(theme: Theme) {
   root.classList.toggle("rainbow", theme === "rainbow")
   root.classList.toggle("prism", false)
   root.classList.toggle("graphite", theme === "graphite")
+}
+
+function getThemeIcon(theme: Theme) {
+  if (theme === "dark") return <Moon className="size-4" />
+  if (theme === "rainbow") return <Rainbow className="size-4" />
+  if (theme === "salmon") return <Fish className="size-4" />
+  if (theme === "graphite") return <Circle className="size-4" />
+  return <Sun className="size-4" />
 }
 
 function getAvatarLetter(user: AuthUser | null): string {
@@ -106,6 +115,7 @@ export function AppShell({
   const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
   const [theme, setTheme] = useState<Theme>("light")
+  const [isThemeSelectorOpen, setIsThemeSelectorOpen] = useState(false)
   const trackedPolls = useSyncExternalStore(
     subscribeTrackedPolls,
     getTrackedPollsSnapshot,
@@ -182,11 +192,20 @@ export function AppShell({
     }
   }, [initialUser, trackedPolls, router])
 
-  function toggleTheme() {
-    const nextTheme = getNextTheme(getCurrentTheme())
+  function setThemePreference(nextTheme: Theme) {
     applyTheme(nextTheme)
     setTheme(nextTheme)
     window.localStorage.setItem("theme", nextTheme)
+  }
+
+  function toggleTheme() {
+    const nextTheme = getNextLightDarkTheme(getCurrentTheme())
+    setThemePreference(nextTheme)
+  }
+
+  function selectTheme(nextTheme: Theme) {
+    setThemePreference(nextTheme)
+    setIsThemeSelectorOpen(false)
   }
 
   async function signOut() {
@@ -370,7 +389,8 @@ export function AppShell({
     ? "Leave/Delete all polls"
     : "Leave all polls"
   const footerClearLabel = hasOwnedPolls ? "Clear polls" : "Leave polls"
-  const nextThemeLabel = THEME_LABEL[getNextTheme(theme)]
+  const lightDarkTargetTheme = theme === "dark" ? "light" : "dark"
+  const lightDarkTargetLabel = THEME_LABEL[lightDarkTargetTheme]
 
   function closeMobileNav() {
     setIsMobileNavOpen(false)
@@ -510,28 +530,51 @@ export function AppShell({
               </Button>
             )}
 
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="w-full justify-start"
-              aria-label={`Switch theme to ${nextThemeLabel}`}
-              title={`Switch theme to ${nextThemeLabel}`}
-              onClick={toggleTheme}
-            >
-              {theme === "dark" ? (
-                <Moon className="size-4" />
-              ) : theme === "rainbow" ? (
-                <Rainbow className="size-4" />
-              ) : theme === "salmon" ? (
-                <Fish className="size-4" />
-              ) : theme === "graphite" ? (
-                <Circle className="size-4" />
-              ) : (
-                <Sun className="size-4" />
-              )}
-              Theme: {THEME_LABEL[theme]}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="flex-1 justify-start"
+                aria-label={`Switch theme to ${lightDarkTargetLabel}`}
+                title={`Switch theme to ${lightDarkTargetLabel}`}
+                onClick={toggleTheme}
+              >
+                {getThemeIcon(theme)}
+                Theme: {THEME_LABEL[theme]}
+              </Button>
+              <Popover open={isThemeSelectorOpen} onOpenChange={setIsThemeSelectorOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    className="size-8"
+                    aria-label="Open theme selector"
+                    title="Select theme"
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="end" className="w-44 p-1">
+                  <div className="space-y-1">
+                    {THEME_ORDER.map((themeOption) => (
+                      <Button
+                        key={themeOption}
+                        type="button"
+                        size="sm"
+                        variant={themeOption === theme ? "secondary" : "ghost"}
+                        className="w-full justify-start"
+                        onClick={() => selectTheme(themeOption)}
+                      >
+                        {getThemeIcon(themeOption)}
+                        {THEME_LABEL[themeOption]}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
 
             <Button
               type="button"
