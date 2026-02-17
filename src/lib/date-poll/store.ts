@@ -863,7 +863,16 @@ export async function getPollSummariesForUser(userId: string): Promise<AccountPo
       if (Date.parse(participantUpdatedAt) > Date.parse(existing.lastInteractionAt)) {
         summaryByPollId.set(poll.id, {
           ...existing,
+          path: `/poll/${poll.id}/results`,
           lastInteractionAt: participantUpdatedAt,
+        })
+        continue
+      }
+
+      if (existing.path !== `/poll/${poll.id}/results`) {
+        summaryByPollId.set(poll.id, {
+          ...existing,
+          path: `/poll/${poll.id}/results`,
         })
       }
     }

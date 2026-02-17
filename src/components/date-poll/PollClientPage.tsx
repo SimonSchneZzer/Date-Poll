@@ -37,6 +37,7 @@ import {
 } from "@/lib/date-poll/date-utils"
 import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
+import { cn } from "@/lib/utils"
 
 type VotePayload = {
   poll: PollView
@@ -54,6 +55,15 @@ const VOTE_ACTION_LABELS: Record<VoteStatus, string> = {
   can: "Set can",
   maybe: "Set maybe",
   cant: "Set can't",
+}
+
+function getStatusButtonClass(isActive: boolean): string {
+  return cn(
+    "transition-[border-color,color,box-shadow,background-color] duration-200",
+    isActive
+      ? "border-primary text-foreground bg-background ring-2 ring-primary/45 shadow-sm shadow-primary/25 !hover:bg-background !hover:text-foreground"
+      : "border-border/90 text-foreground/90 hover:border-primary/55 !hover:bg-muted/55 !hover:text-foreground"
+  )
 }
 
 export function PollClientPage({
@@ -134,10 +144,10 @@ export function PollClientPage({
     upsertTrackedPoll({
       id: poll.id,
       title: poll.title,
-      path: `/poll/${poll.id}`,
+      path: initialCanViewResults ? `/poll/${poll.id}/results` : `/poll/${poll.id}`,
       role: "participant",
     })
-  }, [poll.id, poll.title])
+  }, [initialCanViewResults, poll.id, poll.title])
 
   function setVote(optionId: string, status: VoteStatus) {
     setVotes((prev) => ({ ...prev, [optionId]: status }))
@@ -443,8 +453,8 @@ export function PollClientPage({
                         key={status}
                         type="button"
                         size="sm"
-                        className="w-full sm:w-auto"
-                        variant={rangeStatus === status ? "default" : "outline"}
+                        className={cn("w-full sm:w-auto", getStatusButtonClass(rangeStatus === status))}
+                        variant="outline"
                         onClick={() => setRangeStatus(status)}
                       >
                         <VoteStatusIcon status={status} className="size-3.5" />
@@ -502,9 +512,12 @@ export function PollClientPage({
                                           <Button
                                             type="button"
                                             size="icon-sm"
-                                            className="size-8 sm:size-9"
+                                            className={cn(
+                                              "size-8 sm:size-9",
+                                              getStatusButtonClass(votes[option.id] === status)
+                                            )}
                                             aria-label={`${VOTE_ACTION_LABELS[status]} for ${optionLabel}`}
-                                            variant={votes[option.id] === status ? "default" : "outline"}
+                                            variant="outline"
                                             onClick={() => setVote(option.id, status)}
                                           >
                                             <VoteStatusIcon status={status} className="size-4" />
@@ -668,7 +681,8 @@ export function PollClientPage({
                     <Button
                       key={status}
                       type="button"
-                      variant={autoFillStatus === status ? "default" : "outline"}
+                      variant="outline"
+                      className={getStatusButtonClass(autoFillStatus === status)}
                       disabled={isLoading}
                       onClick={() => setAutoFillStatus(status)}
                     >

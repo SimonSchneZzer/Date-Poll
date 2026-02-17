@@ -12,7 +12,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import {
   VOTE_STATUS_ARIA_LABEL,
@@ -42,6 +42,7 @@ import {
   getPollOptionLocalDay,
   getPollOptionTimestamp,
 } from "@/lib/date-poll/date-utils"
+import { upsertTrackedPoll } from "@/lib/date-poll/tracked-polls"
 import type { PollView, VoteStatus } from "@/lib/date-poll/types"
 import { useFlipListAnimation } from "@/lib/use-flip-list-animation"
 import { cn } from "@/lib/utils"
@@ -424,6 +425,16 @@ export function PollResultsView({
   const [quickReadCount, setQuickReadCount] = useState(QUICK_READ_ALL_ITEMS)
   const [participantQuery, setParticipantQuery] = useState("")
   const [isParticipantColumnCollapsed, setIsParticipantColumnCollapsed] = useState(false)
+
+  useEffect(() => {
+    upsertTrackedPoll({
+      id: poll.id,
+      title: poll.title,
+      path: `/poll/${poll.id}/results`,
+      role: canManageVotes ? "organizer" : "participant",
+    })
+  }, [canManageVotes, poll.id, poll.title])
+
   const sortedOptions = useMemo(() => optionsByDate(pollState), [pollState])
   const normalizedParticipantQuery = participantQuery.trim().toLocaleLowerCase()
   const filteredParticipants = useMemo(() => {

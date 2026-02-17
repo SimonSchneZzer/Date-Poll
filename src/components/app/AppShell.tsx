@@ -64,7 +64,7 @@ const THEME_LABEL: Record<Theme, string> = {
   light: "Light",
   salmon: "Salmon",
   rainbow: "Rainbow",
-  aurora: "Aurora Obscura",
+  aurora: "Antilight",
   graphite: "Graphite",
   dark: "Dark",
 }
