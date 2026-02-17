@@ -66,6 +66,12 @@ type ConsecutiveRange = {
 type ConsecutiveGroup = {
   groupNumber: number
   range: ConsecutiveRange
+  score: number
+}
+
+type DayScore = {
+  dayKey: number
+  score: number
 }
 
 function toConsecutiveRanges(dayKeys: number[]): ConsecutiveRange[] {
@@ -99,6 +105,37 @@ function toConsecutiveRanges(dayKeys: number[]): ConsecutiveRange[] {
   })
 
   return ranges
+}
+
+function toConsecutiveScoreGroups(dayScores: DayScore[]): ConsecutiveGroup[] {
+  if (dayScores.length === 0) return []
+
+  const dayKeysByScore = new Map<number, number[]>()
+  for (const dayScore of dayScores) {
+    const existingDayKeys = dayKeysByScore.get(dayScore.score)
+    if (existingDayKeys) {
+      existingDayKeys.push(dayScore.dayKey)
+    } else {
+      dayKeysByScore.set(dayScore.score, [dayScore.dayKey])
+    }
+  }
+
+  const groups: Array<Omit<ConsecutiveGroup, "groupNumber">> = []
+  for (const [score, rawDayKeys] of dayKeysByScore.entries()) {
+    const uniqueDayKeys = Array.from(new Set(rawDayKeys)).sort((a, b) => a - b)
+    const ranges = toConsecutiveRanges(uniqueDayKeys)
+    for (const range of ranges) {
+      groups.push({ range, score })
+    }
+  }
+
+  return groups
+    .sort((a, b) => a.range.startDay - b.range.startDay || b.score - a.score)
+    .map((group, index) => ({
+      groupNumber: index + 1,
+      range: group.range,
+      score: group.score,
+    }))
 }
 
 function formatConsecutiveRange(range: ConsecutiveRange): string {
@@ -139,10 +176,11 @@ export function PollResultsView({
         .sort((a, b) => b.score - a.score || b.option.canCount - a.option.canCount),
     [sortedOptions]
   )
+  const highestScore = rankedOptions.length > 0 ? rankedOptions[0].score : null
   const quickReadMaxCount = Math.max(1, rankedOptions.length)
   const quickReadValue = Math.min(quickReadCount, quickReadMaxCount)
   const quickReadPresetValues = useMemo(() => {
-    return Array.from(new Set([1, 3, 5, quickReadMaxCount])).filter(
+    return Array.from(new Set([1, 5, 7, quickReadMaxCount])).filter(
       (value) => value <= quickReadMaxCount
     )
   }, [quickReadMaxCount])
@@ -150,36 +188,86 @@ export function PollResultsView({
     () => rankedOptions.slice(0, quickReadValue),
     [quickReadValue, rankedOptions]
   )
-  const consecutiveRanges = useMemo(() => {
-    const uniqueDayKeys = Array.from(
-      new Set(
-        sortedOptions
-          .map((option) => getLocalDayKey(option.value))
-          .filter((dayKey): dayKey is number => dayKey !== null)
-      )
-    ).sort((a, b) => a - b)
+  const dayScores = useMemo<DayScore[]>(() => {
+    const uniqueDayScores = new Set<string>()
+    const values: DayScore[] = []
 
-    return toConsecutiveRanges(uniqueDayKeys)
+    for (const option of sortedOptions) {
+      const dayKey = getLocalDayKey(option.value)
+      if (dayKey === null) continue
+
+      const score = option.canCount * 2 + option.maybeCount
+      const key = `${dayKey}:${score}`
+      if (uniqueDayScores.has(key)) {
+        continue
+      }
+
+      uniqueDayScores.add(key)
+      values.push({ dayKey, score })
+    }
+
+    return values.sort((a, b) => a.dayKey - b.dayKey || b.score - a.score)
   }, [sortedOptions])
   const consecutiveGroups = useMemo<ConsecutiveGroup[]>(
-    () =>
-      consecutiveRanges.map((range, index) => ({
-        groupNumber: index + 1,
-        range,
-      })),
-    [consecutiveRanges]
+    () => toConsecutiveScoreGroups(dayScores),
+    [dayScores]
   )
-  const consecutiveGroupByDay = useMemo(() => {
-    const dayToGroup = new Map<number, ConsecutiveGroup>()
+  const consecutiveGroupByDayScore = useMemo(() => {
+    const dayScoreToGroup = new Map<string, ConsecutiveGroup>()
 
     for (const group of consecutiveGroups) {
       for (let day = group.range.startDay; day <= group.range.endDay; day += DAY_IN_MS) {
-        dayToGroup.set(day, group)
+        dayScoreToGroup.set(`${day}:${group.score}`, group)
       }
     }
 
-    return dayToGroup
+    return dayScoreToGroup
   }, [consecutiveGroups])
+  const groupedQuickReadOptions = useMemo(() => {
+    type QuickReadEntry = {
+      rank: number
+      item: (typeof displayedQuickReadOptions)[number]
+      group: ConsecutiveGroup | null
+    }
+
+    const entries: QuickReadEntry[] = displayedQuickReadOptions.map((item, index) => ({
+      rank: index + 1,
+      item,
+      group: (() => {
+        const dayKey = getLocalDayKey(item.option.value)
+        if (dayKey === null) return null
+        return consecutiveGroupByDayScore.get(`${dayKey}:${item.score}`) ?? null
+      })(),
+    }))
+
+    const groupedEntries = new Map<
+      string,
+      {
+        key: string
+        group: ConsecutiveGroup | null
+        entries: QuickReadEntry[]
+      }
+    >()
+
+    for (const entry of entries) {
+      const key = entry.group ? `group-${entry.group.groupNumber}` : `option-${entry.item.option.id}`
+      const existingGroup = groupedEntries.get(key)
+      if (existingGroup) {
+        existingGroup.entries.push(entry)
+        continue
+      }
+
+      groupedEntries.set(key, {
+        key,
+        group: entry.group,
+        entries: [entry],
+      })
+    }
+
+    return Array.from(groupedEntries.values()).sort(
+      (groupA, groupB) => groupA.entries[0].rank - groupB.entries[0].rank
+    )
+  }, [displayedQuickReadOptions, consecutiveGroupByDayScore])
 
   function updateQuickReadCount(nextCount: number) {
     const nextValue = Math.min(Math.max(nextCount, 1), quickReadMaxCount)
@@ -196,12 +284,6 @@ export function PollResultsView({
   function handleQuickReadStep(direction: "less" | "more") {
     const nextCount = direction === "less" ? quickReadValue - 1 : quickReadValue + 1
     updateQuickReadCount(nextCount)
-  }
-
-  function getConsecutiveGroupForOption(optionValue: string): ConsecutiveGroup | null {
-    const dayKey = getLocalDayKey(optionValue)
-    if (dayKey === null) return null
-    return consecutiveGroupByDay.get(dayKey) ?? null
   }
 
   async function confirmRemoveVotes() {
@@ -375,44 +457,66 @@ export function PollResultsView({
             {displayedQuickReadOptions.length === 0 ? (
               <p className="text-muted-foreground text-sm">No options available yet.</p>
             ) : (
-              displayedQuickReadOptions.map((item, index) => (
-                <div
-                  key={item.option.id}
-                  className="space-y-1 rounded-md border border-l-4 border-l-emerald-500/65 bg-background/80 px-2.5 py-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold tracking-wide uppercase">Top {index + 1}</p>
-                    <span className="text-muted-foreground text-[11px]">Score {item.score}</span>
-                  </div>
-                  <p className="text-sm font-medium leading-tight">{formatOption(item.option.value)}</p>
-                  {(() => {
-                    const group = getConsecutiveGroupForOption(item.option.value)
-                    if (!group) return null
+              groupedQuickReadOptions.map((groupedOptions) => (
+                <div key={groupedOptions.key} className="space-y-1.5">
+                  {groupedOptions.group ? (
+                    <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                        Group {groupedOptions.group.groupNumber}
+                      </Badge>
+                      <Badge
+                        variant={
+                          highestScore !== null && groupedOptions.group.score === highestScore
+                            ? "secondary"
+                            : "outline"
+                        }
+                        className="h-5 px-1.5 text-[10px]"
+                      >
+                        Score {groupedOptions.group.score}
+                      </Badge>
+                      <span className="truncate">{formatConsecutiveRange(groupedOptions.group.range)}</span>
+                    </div>
+                  ) : null}
+                  <div className="relative pl-3.5">
+                    <div
+                      aria-hidden
+                      className={`pointer-events-none absolute inset-y-1 left-1.5 w-px rounded ${
+                        highestScore !== null && groupedOptions.group?.score === highestScore
+                          ? "bg-emerald-500/60"
+                          : "bg-muted-foreground/35"
+                      }`}
+                    />
+                    <div className="space-y-1.5">
+                      {groupedOptions.entries.map((entry) => (
+                        <div key={entry.item.option.id} className="rounded-md border bg-background/80 px-2.5 py-2">
+                          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1">
+                            <p className="truncate text-sm font-medium leading-tight">
+                              {formatOption(entry.item.option.value)}
+                            </p>
+                            <span className="text-muted-foreground text-[11px] whitespace-nowrap">
+                              Score {entry.item.score}
+                            </span>
+                            <p className="text-muted-foreground text-[11px] font-medium">Top {entry.rank}</p>
+                            <div className="text-muted-foreground flex flex-wrap items-center justify-end gap-2 text-[11px]">
+                              {VOTE_STATUS_ORDER.map((status) => {
+                                const countByStatus: Record<VoteStatus, number> = {
+                                  can: entry.item.option.canCount,
+                                  maybe: entry.item.option.maybeCount,
+                                  cant: entry.item.option.cantCount,
+                                }
 
-                    return (
-                      <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-[11px]">
-                        <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                          Group {group.groupNumber}
-                        </Badge>
-                        <span className="truncate">{formatConsecutiveRange(group.range)}</span>
-                      </div>
-                    )
-                  })()}
-                  <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-[11px]">
-                    {VOTE_STATUS_ORDER.map((status) => {
-                      const countByStatus: Record<VoteStatus, number> = {
-                        can: item.option.canCount,
-                        maybe: item.option.maybeCount,
-                        cant: item.option.cantCount,
-                      }
-
-                      return (
-                        <span key={status} className="inline-flex items-center gap-1">
-                          <VoteStatusIcon status={status} className="size-3.5" />
-                          {countByStatus[status]}
-                        </span>
-                      )
-                    })}
+                                return (
+                                  <span key={status} className="inline-flex items-center gap-1">
+                                    <VoteStatusIcon status={status} className="size-3.5" />
+                                    {countByStatus[status]}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ))

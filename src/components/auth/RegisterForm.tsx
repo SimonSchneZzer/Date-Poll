@@ -11,11 +11,12 @@ import { Input } from "@/components/ui/input"
 
 type RegisterFormProps = {
   nextPath: string
+  nextPathLabel: string
   configured: boolean
   initialError?: string | null
 }
 
-export function RegisterForm({ nextPath, configured, initialError }: RegisterFormProps) {
+export function RegisterForm({ nextPath, nextPathLabel, configured, initialError }: RegisterFormProps) {
   const router = useRouter()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -79,15 +80,15 @@ export function RegisterForm({ nextPath, configured, initialError }: RegisterFor
   }
 
   return (
-    <Card className="mx-auto w-full max-w-md">
-      <CardHeader>
-        <CardTitle className="text-2xl">Create account</CardTitle>
+    <Card className="w-full overflow-hidden">
+      <CardHeader className="border-b">
+        <CardTitle className="text-xl sm:text-2xl">Create account</CardTitle>
         <CardDescription>
           Create an account to create and manage polls.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <form className="space-y-3" onSubmit={handleRegister}>
+      <CardContent className="space-y-5 pt-6">
+        <form className="space-y-4" onSubmit={handleRegister}>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="fullName">
               Full name (optional)
@@ -156,20 +157,30 @@ export function RegisterForm({ nextPath, configured, initialError }: RegisterFor
         </form>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
-        {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
-
-        {!configured ? (
-          <p className="text-muted-foreground text-xs">
-            Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
-            to enable auth.
+        {success ? (
+          <p className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+            {success}
           </p>
         ) : null}
 
-        <div className="flex items-center justify-between text-sm">
-          <Link href={`/login?next=${encodeURIComponent(nextPath)}`} className="underline">
+        {!configured ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+            <p className="text-muted-foreground">
+              Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
+              to enable auth.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="text-muted-foreground rounded-md border bg-muted/20 p-3 text-xs">
+          After sign-up, you will continue to {nextPathLabel}.
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
+          <Link href={`/login?next=${encodeURIComponent(nextPath)}`} className="hover:text-foreground underline">
             Already have an account? Sign in
           </Link>
-          <Link href="/" className="underline">
+          <Link href="/" className="hover:text-foreground underline">
             Back to home
           </Link>
         </div>

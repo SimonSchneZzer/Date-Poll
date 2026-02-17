@@ -101,6 +101,17 @@ function parseDbError(payload: unknown): string {
   )
 }
 
+function mapVotePersistenceError(error: string): string[] {
+  if (
+    /Participant_pollId_normalizedName_key/i.test(error) ||
+    (/duplicate key value/i.test(error) && /normalizedname/i.test(error))
+  ) {
+    return ["Diesen Namen gibt es schon. Bitte verwende einen anderen Namen."]
+  }
+
+  return ["Could not save vote. Contact Admin"]
+}
+
 async function parseJsonResponse(response: Response): Promise<unknown> {
   const text = await response.text()
   if (!text) return null
@@ -653,7 +664,7 @@ export async function upsertParticipantVotes(args: {
       return { errors: ["Poll not found"] }
     }
 
-    return { errors: ["Could not save vote. Contact Admin"] }
+    return { errors: mapVotePersistenceError(replaceVotesResult.error) }
   }
 
   try {

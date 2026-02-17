@@ -38,6 +38,8 @@ type PollClientPageProps = {
   initialPoll: PollView
   initialFullName?: string
   initialVotes?: Record<string, VoteStatus>
+  initialCanViewResults?: boolean
+  initialError?: string | null
 }
 
 const VOTE_ACTION_LABELS: Record<VoteStatus, string> = {
@@ -56,17 +58,24 @@ function formatOption(value: string): string {
   }).format(parsedDate)
 }
 
-export function PollClientPage({ initialPoll, initialFullName, initialVotes }: PollClientPageProps) {
+export function PollClientPage({
+  initialPoll,
+  initialFullName,
+  initialVotes,
+  initialCanViewResults = false,
+  initialError = null,
+}: PollClientPageProps) {
   const router = useRouter()
   const poll = initialPoll
 
   const [fullName, setFullName] = useState(initialFullName ?? "")
   const [votes, setVotes] = useState<Record<string, VoteStatus>>(initialVotes ?? {})
   const [selectedRange, setSelectedRange] = useState<DateRange>()
-  const [rangeStatus, setRangeStatus] = useState<VoteStatus>("can")
-  const [error, setError] = useState<string | null>(null)
+  const [rangeStatus, setRangeStatus] = useState<VoteStatus | null>(null)
+  const [error, setError] = useState<string | null>(initialError)
   const [isLoading, setIsLoading] = useState(false)
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
+  const [canViewResults, setCanViewResults] = useState(initialCanViewResults)
 
   const optionsByDate = useMemo(
     () =>
@@ -108,6 +117,10 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
     () => poll.options.every((option) => votes[option.id]),
     [poll.options, votes]
   )
+  const hasAnyVoteSelection = useMemo(
+    () => poll.options.some((option) => Boolean(votes[option.id])),
+    [poll.options, votes]
+  )
 
   useEffect(() => {
     upsertTrackedPoll({
@@ -144,7 +157,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
   }, [poll.options, selectedRange])
 
   useEffect(() => {
-    if (rangeOptionIds.length === 0) {
+    if (rangeOptionIds.length === 0 || !rangeStatus) {
       return
     }
 
@@ -215,6 +228,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
         role: "participant",
       })
 
+      setCanViewResults(true)
       router.push(`/poll/${updatedPoll.id}/results`)
       router.refresh()
     } catch {
@@ -227,7 +241,7 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
   function clearAllVotes() {
     setSelectedRange(undefined)
     setVotes({})
-    setRangeStatus("can")
+    setRangeStatus(null)
     setError(null)
     setIsClearDialogOpen(false)
   }
@@ -251,12 +265,28 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
               </p>
             )}
           </div>
-          <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
-            <Link href={`/poll/${poll.id}/results`}>
-              <BarChart3 className="size-4" />
-              View results
-            </Link>
-          </Button>
+          {canViewResults ? (
+            <Button type="button" variant="outline" className="w-full sm:w-auto" asChild>
+              <Link href={`/poll/${poll.id}/results`}>
+                <BarChart3 className="size-4" />
+                View results
+              </Link>
+            </Button>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="w-full sm:w-auto">
+                    <Button type="button" variant="outline" className="w-full sm:w-auto" disabled>
+                      <BarChart3 className="size-4" />
+                      View results
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Submit your vote to unlock results.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
         <div className="relative mt-4 flex flex-wrap gap-2">
           <Badge variant="secondary">Dates: {poll.options.length}</Badge>
@@ -301,21 +331,26 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                     </div>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label="Clear selected range"
-                          disabled={!selectedRange?.from}
-                          onClick={() => {
-                            setSelectedRange(undefined)
-                            setError(null)
-                          }}
-                        >
-                          <X className="size-4" />
-                        </Button>
+                        <span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label="Clear selected range"
+                            disabled={!selectedRange?.from}
+                            onClick={() => {
+                              setSelectedRange(undefined)
+                              setRangeStatus(null)
+                              setError(null)
+                            }}
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </span>
                       </TooltipTrigger>
-                      <TooltipContent>Clear selected range</TooltipContent>
+                      <TooltipContent>
+                        {selectedRange?.from ? "Clear selected range" : "Select a range first"}
+                      </TooltipContent>
                     </Tooltip>
                   </div>
 
@@ -333,27 +368,23 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                         {VOTE_STATUS_LABEL[status]}
                       </Button>
                     ))}
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="w-full sm:w-auto"
-                      variant="ghost"
-                      onClick={() => setIsClearDialogOpen(true)}
-                    >
-                      <Eraser className="size-3.5" />
-                      Clear
-                    </Button>
                   </div>
 
                   {selectedRange?.from ? (
                     <p className="text-muted-foreground text-xs">
-                      Auto-applied{" "}
-                      <span className="inline-flex items-center gap-1 align-middle">
-                        <VoteStatusIcon status={rangeStatus} className="size-3.5" />
-                        {VOTE_STATUS_LABEL[rangeStatus]}
-                      </span>{" "}
-                      to {rangeOptionIds.length} {rangeOptionIds.length === 1 ? "date" : "dates"} in the selected
-                      range.
+                      {rangeStatus ? (
+                        <>
+                          Auto-applied{" "}
+                          <span className="inline-flex items-center gap-1 align-middle">
+                            <VoteStatusIcon status={rangeStatus} className="size-3.5" />
+                            {VOTE_STATUS_LABEL[rangeStatus]}
+                          </span>{" "}
+                          to {rangeOptionIds.length} {rangeOptionIds.length === 1 ? "date" : "dates"} in the selected
+                          range.
+                        </>
+                      ) : (
+                        "Choose a status to apply it to the selected range."
+                      )}
                     </p>
                   ) : null}
 
@@ -413,7 +444,26 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
 
               <div className="space-y-4 xl:sticky xl:top-24 xl:self-start">
                 <div className="rounded-xl border bg-muted/20 p-4">
-                  <p className="text-sm font-medium">Current vote</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Current vote</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label="Clear all selected dates"
+                            disabled={!hasAnyVoteSelection}
+                            onClick={() => setIsClearDialogOpen(true)}
+                          >
+                            <Eraser className="size-3.5" />
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>Clear all selected dates</TooltipContent>
+                    </Tooltip>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {VOTE_STATUS_ORDER.map((status) => (
                       <Badge key={status} variant="outline">
@@ -458,12 +508,29 @@ export function PollClientPage({ initialPoll, initialFullName, initialVotes }: P
                       </>
                     )}
                   </Button>
-                  <Button type="button" variant="outline" className="w-full" asChild>
-                    <Link href={`/poll/${poll.id}/results`}>
-                      <BarChart3 className="size-4" />
-                      View results
-                    </Link>
-                  </Button>
+                  {canViewResults ? (
+                    <Button type="button" variant="outline" className="w-full" asChild>
+                      <Link href={`/poll/${poll.id}/results`}>
+                        <BarChart3 className="size-4" />
+                        View results
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="w-full">
+                          <Button type="button" variant="outline" className="w-full" disabled>
+                            <BarChart3 className="size-4" />
+                            View results
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>Submit your vote to unlock results.</TooltipContent>
+                    </Tooltip>
+                  )}
+                  {!canViewResults ? (
+                    <p className="text-muted-foreground text-xs">Submit your vote to unlock results.</p>
+                  ) : null}
                 </div>
               </div>
             </form>

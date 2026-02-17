@@ -11,11 +11,12 @@ import { Input } from "@/components/ui/input"
 
 type LoginFormProps = {
   nextPath: string
+  nextPathLabel: string
   configured: boolean
   initialError?: string | null
 }
 
-export function LoginForm({ nextPath, configured, initialError }: LoginFormProps) {
+export function LoginForm({ nextPath, nextPathLabel, configured, initialError }: LoginFormProps) {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -61,15 +62,15 @@ export function LoginForm({ nextPath, configured, initialError }: LoginFormProps
   }
 
   return (
-    <Card className="mx-auto w-full max-w-md">
-      <CardHeader>
-        <CardTitle className="text-2xl">Sign in</CardTitle>
+    <Card className="w-full overflow-hidden">
+      <CardHeader className="border-b">
+        <CardTitle className="text-xl sm:text-2xl">Sign in</CardTitle>
         <CardDescription>
           Sign in to create polls. Voting on existing polls still works without login.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <form className="space-y-3" onSubmit={handlePasswordSignIn}>
+      <CardContent className="space-y-5 pt-6">
+        <form className="space-y-4" onSubmit={handlePasswordSignIn}>
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="email">
               Email
@@ -114,21 +115,23 @@ export function LoginForm({ nextPath, configured, initialError }: LoginFormProps
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         {!configured ? (
-          <p className="text-muted-foreground text-xs">
-            Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
-            to enable auth.
-          </p>
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+            <p className="text-muted-foreground">
+              Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> and <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
+              to enable auth.
+            </p>
+          </div>
         ) : null}
 
-        <p className="text-muted-foreground text-xs">
-          You will be redirected back to <code>{nextPath}</code> after sign-in.
-        </p>
+        <div className="text-muted-foreground rounded-md border bg-muted/20 p-3 text-xs">
+          You will be redirected back to {nextPathLabel} after sign-in.
+        </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <Link href={`/register?next=${encodeURIComponent(nextPath)}`} className="underline">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
+          <Link href={`/register?next=${encodeURIComponent(nextPath)}`} className="hover:text-foreground underline">
             Need an account? Register
           </Link>
-          <Link href="/" className="underline">
+          <Link href="/" className="hover:text-foreground underline">
             Back to home
           </Link>
         </div>

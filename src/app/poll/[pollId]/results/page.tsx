@@ -1,13 +1,14 @@
 import Link from "next/link"
 import { PencilLine } from "lucide-react"
 import { cookies } from "next/headers"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
 import { PollResultsView } from "@/components/date-poll/PollResultsView"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { getCurrentUserFromCookies } from "@/lib/auth/supabase-auth"
-import { getPoll, isPollOrganizer } from "@/lib/date-poll/store"
+import { getParticipantVotesForUser, getPoll, isPollOrganizer } from "@/lib/date-poll/store"
+import { hasVotedInPoll, VOTED_POLLS_COOKIE } from "@/lib/date-poll/vote-cookie"
 
 export const dynamic = "force-dynamic"
 
@@ -25,6 +26,16 @@ export default async function PollResultsPage({
 
   const cookieStore = await cookies()
   const currentUser = await getCurrentUserFromCookies(cookieStore)
+  const existingVote = currentUser
+    ? await getParticipantVotesForUser({ pollId, userId: currentUser.id })
+    : null
+  const guestHasVoted = hasVotedInPoll(cookieStore.get(VOTED_POLLS_COOKIE)?.value, pollId)
+  const canViewResults = existingVote !== null || guestHasVoted
+
+  if (!canViewResults) {
+    redirect(`/poll/${pollId}?error=vote_required`)
+  }
+
   const canManageVotes = currentUser
     ? await isPollOrganizer({ pollId, userId: currentUser.id })
     : false

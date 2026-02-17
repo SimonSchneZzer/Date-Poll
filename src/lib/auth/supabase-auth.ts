@@ -128,6 +128,37 @@ export function normalizeNextPath(path: string | null | undefined): string {
   return isSafeRedirectPath(path) ? path : "/"
 }
 
+function toTitleCase(value: string): string {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+export function describeNextPath(path: string | null | undefined): string {
+  const safePath = normalizeNextPath(path)
+
+  if (safePath === "/") return "Home"
+  if (safePath === "/dashboard") return "Dashboard"
+  if (safePath === "/poll/new") return "Create poll"
+  if (safePath === "/settings") return "Settings"
+  if (safePath === "/profile") return "Profile"
+  if (safePath === "/login") return "Sign in"
+  if (safePath === "/register") return "Create account"
+  if (/^\/poll\/[^/]+\/results\/?$/.test(safePath)) return "Poll results"
+  if (/^\/poll\/[^/]+\/?$/.test(safePath)) return "Poll details"
+
+  const segments = safePath.split("/").filter(Boolean)
+  if (segments.length === 0) return "Home"
+
+  const finalSegment = segments[segments.length - 1]
+  const label = decodeURIComponent(finalSegment).replace(/[-_]+/g, " ").trim()
+  if (!label) return "App"
+
+  return toTitleCase(label)
+}
+
 export function getCreatePollPath(): string {
   return "/poll/new"
 }
