@@ -133,7 +133,8 @@ export function AppShell({
   const [pollMutationError, setPollMutationError] = useState<string | null>(null)
   const [accountPolls, setAccountPolls] = useState<AccountPollSummary[]>(initialAccountPolls)
   const [theme, setTheme] = useState<Theme>("light")
-  const [isThemeSelectorOpen, setIsThemeSelectorOpen] = useState(false)
+  const [isDesktopThemeSelectorOpen, setIsDesktopThemeSelectorOpen] = useState(false)
+  const [isMobileThemeSelectorOpen, setIsMobileThemeSelectorOpen] = useState(false)
   const themeTransitionTimeoutRef = useRef<number | null>(null)
   const trackedPolls = useSyncExternalStore(
     subscribeTrackedPolls,
@@ -265,7 +266,8 @@ export function AppShell({
 
   function selectTheme(nextTheme: Theme) {
     setThemePreference(nextTheme)
-    setIsThemeSelectorOpen(false)
+    setIsDesktopThemeSelectorOpen(false)
+    setIsMobileThemeSelectorOpen(false)
     toast({
       title: "Theme updated",
       description: `Switched to ${THEME_LABEL[nextTheme]}.`,
@@ -517,6 +519,7 @@ export function AppShell({
 
   function closeMobileNav() {
     setIsMobileNavOpen(false)
+    setIsMobileThemeSelectorOpen(false)
   }
 
   function toggleDesktopSidebar() {
@@ -778,6 +781,14 @@ export function AppShell({
         </div>
       )
     }
+
+    const isMobileFooter = typeof onNavigate === "function"
+    const isThemeSelectorOpen = isMobileFooter
+      ? isMobileThemeSelectorOpen
+      : isDesktopThemeSelectorOpen
+    const setIsThemeSelectorOpen = isMobileFooter
+      ? setIsMobileThemeSelectorOpen
+      : setIsDesktopThemeSelectorOpen
 
     return (
       <div className="border-t p-3">
