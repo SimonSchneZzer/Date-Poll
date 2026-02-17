@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-  formatPollOptionLabel,
+  formatPollOptionLabelWithWeekday,
   getPollOptionLocalDay,
   getPollOptionTimestamp,
   parsePollOptionDate,
@@ -498,7 +498,7 @@ export function PollClientPage({
                       </TableHeader>
                       <TableBody>
                         {optionsByDate.map((option) => {
-                          const optionLabel = formatPollOptionLabel(option.value)
+                          const optionLabel = formatPollOptionLabelWithWeekday(option.value)
 
                           return (
                             <TableRow key={option.id}>

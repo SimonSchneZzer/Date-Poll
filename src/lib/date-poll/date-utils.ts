@@ -1,4 +1,7 @@
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+})
 
 function parseDateOnly(value: string): Date | null {
   if (!DATE_ONLY_RE.test(value)) return null
@@ -62,4 +65,11 @@ export function formatPollOptionLabel(value: string): string {
   })
 
   return formatter.format(parsed)
+}
+
+export function formatPollOptionLabelWithWeekday(value: string): string {
+  const parsed = parsePollOptionDate(value)
+  if (!parsed) return value
+
+  return `${WEEKDAY_FORMATTER.format(parsed)}, ${formatPollOptionLabel(value)}`
 }

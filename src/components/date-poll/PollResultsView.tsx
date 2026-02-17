@@ -39,6 +39,7 @@ import { useToast } from "@/components/ui/toast-provider"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   formatPollOptionLabel,
+  formatPollOptionLabelWithWeekday,
   getPollOptionLocalDay,
   getPollOptionTimestamp,
 } from "@/lib/date-poll/date-utils"
@@ -764,7 +765,9 @@ export function PollResultsView({
 
                     return (
                       <TableRow key={option.id}>
-                        <TableCell className="whitespace-normal">{formatPollOptionLabel(option.value)}</TableCell>
+                        <TableCell className="whitespace-normal">
+                          {formatPollOptionLabelWithWeekday(option.value)}
+                        </TableCell>
                         {VOTE_STATUS_ORDER.map((status) => (
                           <TableCell key={status} className="text-center font-medium">
                             <AnimatedCount value={countByStatus[status]} />
@@ -1041,7 +1044,7 @@ export function PollResultsView({
                     </TableHead>
                     {sortedOptions.map((option) => (
                       <TableHead key={option.id} className="whitespace-nowrap text-center">
-                        {formatPollOptionLabel(option.value)}
+                        {formatPollOptionLabelWithWeekday(option.value)}
                       </TableHead>
                     ))}
                     {canManageVotes ? <TableHead className="w-16 text-right">Actions</TableHead> : null}
