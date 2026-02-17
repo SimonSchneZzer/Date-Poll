@@ -565,7 +565,7 @@ export function PollResultsView({
               <Table className="w-full min-w-[44rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-20 min-w-[12rem] border-r bg-background md:min-w-[14rem]">
+                    <TableHead className="sticky left-0 z-20 w-[9rem] min-w-[9rem] border-r bg-background sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]">
                       Participant
                     </TableHead>
                     {sortedOptions.map((option) => (
@@ -592,7 +592,7 @@ export function PollResultsView({
                   ) : (
                     filteredParticipants.map((participant) => (
                       <TableRow key={participant.id}>
-                        <TableCell className="sticky left-0 z-10 border-r bg-background whitespace-nowrap">
+                        <TableCell className="sticky left-0 z-10 w-[9rem] min-w-[9rem] border-r bg-background whitespace-normal break-words sm:w-[10.5rem] sm:min-w-[10.5rem] md:w-[14rem] md:min-w-[14rem]">
                           {participant.fullName}
                         </TableCell>
                         {sortedOptions.map((option) => {
