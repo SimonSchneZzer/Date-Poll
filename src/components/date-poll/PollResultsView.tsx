@@ -84,6 +84,8 @@ type ConsecutiveGroup = {
   groupNumber: number
   range: ConsecutiveRange
   score: number
+  minScore: number
+  maxScore: number
 }
 
 type DayScore = {
@@ -108,68 +110,154 @@ type QuickReadGroupBucket = {
   entries: QuickReadEntry[]
 }
 
-function toConsecutiveRanges(dayKeys: number[]): ConsecutiveRange[] {
-  if (dayKeys.length === 0) return []
+type ConsecutiveGroupingResult = {
+  groups: ConsecutiveGroup[]
+  groupByDayScore: Map<string, ConsecutiveGroup>
+}
 
-  const ranges: ConsecutiveRange[] = []
-  let rangeStart = dayKeys[0]
-  let previousDay = dayKeys[0]
+type InsightsGroupingMode = "strict" | "connected"
 
-  for (let index = 1; index < dayKeys.length; index += 1) {
-    const currentDay = dayKeys[index]
-    if (currentDay - previousDay === DAY_IN_MS) {
-      previousDay = currentDay
+const DEFAULT_CONNECTED_INSIGHTS_SCORE_TOLERANCE = 1
+const MAX_CONNECTED_INSIGHTS_SCORE_TOLERANCE = 10
+
+function findDayScoreRoot(parents: number[], index: number): number {
+  if (parents[index] === index) return index
+  parents[index] = findDayScoreRoot(parents, parents[index])
+  return parents[index]
+}
+
+function mergeDayScoreRoots(parents: number[], ranks: number[], leftIndex: number, rightIndex: number) {
+  const leftRoot = findDayScoreRoot(parents, leftIndex)
+  const rightRoot = findDayScoreRoot(parents, rightIndex)
+  if (leftRoot === rightRoot) return
+
+  if (ranks[leftRoot] < ranks[rightRoot]) {
+    parents[leftRoot] = rightRoot
+    return
+  }
+
+  if (ranks[leftRoot] > ranks[rightRoot]) {
+    parents[rightRoot] = leftRoot
+    return
+  }
+
+  parents[rightRoot] = leftRoot
+  ranks[leftRoot] += 1
+}
+
+function toConsecutiveScoreGroups(
+  dayScores: DayScore[],
+  scoreTolerance: number
+): ConsecutiveGroupingResult {
+  if (dayScores.length === 0) {
+    return { groups: [], groupByDayScore: new Map() }
+  }
+
+  const normalizedTolerance = Math.max(0, Math.floor(scoreTolerance))
+  const sortedDayScores = Array.from(
+    new Map(dayScores.map((dayScore) => [`${dayScore.dayKey}:${dayScore.score}`, dayScore])).values()
+  ).sort((a, b) => a.dayKey - b.dayKey || b.score - a.score)
+
+  const parents = sortedDayScores.map((_, index) => index)
+  const ranks = sortedDayScores.map(() => 0)
+  const dayScoreIndexesByDay = new Map<number, number[]>()
+
+  for (let index = 0; index < sortedDayScores.length; index += 1) {
+    const dayScore = sortedDayScores[index]
+    const existingIndexes = dayScoreIndexesByDay.get(dayScore.dayKey)
+    if (existingIndexes) {
+      existingIndexes.push(index)
+    } else {
+      dayScoreIndexesByDay.set(dayScore.dayKey, [index])
+    }
+  }
+
+  for (const [dayKey, currentDayIndexes] of dayScoreIndexesByDay.entries()) {
+    const nextDayIndexes = dayScoreIndexesByDay.get(dayKey + DAY_IN_MS)
+    if (!nextDayIndexes) continue
+
+    for (const currentIndex of currentDayIndexes) {
+      const current = sortedDayScores[currentIndex]
+      for (const nextIndex of nextDayIndexes) {
+        const next = sortedDayScores[nextIndex]
+        if (Math.abs(current.score - next.score) <= normalizedTolerance) {
+          mergeDayScoreRoots(parents, ranks, currentIndex, nextIndex)
+        }
+      }
+    }
+  }
+
+  const components = new Map<
+    number,
+    {
+      dayKeys: Set<number>
+      dayScoreKeys: string[]
+      minScore: number
+      maxScore: number
+    }
+  >()
+
+  for (let index = 0; index < sortedDayScores.length; index += 1) {
+    const dayScore = sortedDayScores[index]
+    const root = findDayScoreRoot(parents, index)
+    const existingComponent = components.get(root)
+    if (existingComponent) {
+      existingComponent.dayKeys.add(dayScore.dayKey)
+      existingComponent.dayScoreKeys.push(`${dayScore.dayKey}:${dayScore.score}`)
+      existingComponent.minScore = Math.min(existingComponent.minScore, dayScore.score)
+      existingComponent.maxScore = Math.max(existingComponent.maxScore, dayScore.score)
       continue
     }
 
-    ranges.push({
-      startDay: rangeStart,
-      endDay: previousDay,
-      count: Math.round((previousDay - rangeStart) / DAY_IN_MS) + 1,
+    components.set(root, {
+      dayKeys: new Set([dayScore.dayKey]),
+      dayScoreKeys: [`${dayScore.dayKey}:${dayScore.score}`],
+      minScore: dayScore.score,
+      maxScore: dayScore.score,
     })
-
-    rangeStart = currentDay
-    previousDay = currentDay
   }
 
-  ranges.push({
-    startDay: rangeStart,
-    endDay: previousDay,
-    count: Math.round((previousDay - rangeStart) / DAY_IN_MS) + 1,
-  })
-
-  return ranges
-}
-
-function toConsecutiveScoreGroups(dayScores: DayScore[]): ConsecutiveGroup[] {
-  if (dayScores.length === 0) return []
-
-  const dayKeysByScore = new Map<number, number[]>()
-  for (const dayScore of dayScores) {
-    const existingDayKeys = dayKeysByScore.get(dayScore.score)
-    if (existingDayKeys) {
-      existingDayKeys.push(dayScore.dayKey)
-    } else {
-      dayKeysByScore.set(dayScore.score, [dayScore.dayKey])
-    }
-  }
-
-  const groups: Array<Omit<ConsecutiveGroup, "groupNumber">> = []
-  for (const [score, rawDayKeys] of dayKeysByScore.entries()) {
-    const uniqueDayKeys = Array.from(new Set(rawDayKeys)).sort((a, b) => a - b)
-    const ranges = toConsecutiveRanges(uniqueDayKeys)
-    for (const range of ranges) {
-      groups.push({ range, score })
-    }
-  }
-
-  return groups
-    .sort((a, b) => a.range.startDay - b.range.startDay || b.score - a.score)
+  const groupsWithKeys = Array.from(components.values())
+    .map((component) => {
+      const orderedDayKeys = Array.from(component.dayKeys).sort((a, b) => a - b)
+      return {
+        range: {
+          startDay: orderedDayKeys[0],
+          endDay: orderedDayKeys[orderedDayKeys.length - 1],
+          count: orderedDayKeys.length,
+        },
+        score: component.maxScore,
+        minScore: component.minScore,
+        maxScore: component.maxScore,
+        dayScoreKeys: component.dayScoreKeys,
+      }
+    })
+    .sort(
+      (a, b) =>
+        a.range.startDay - b.range.startDay || b.score - a.score || b.range.count - a.range.count
+    )
     .map((group, index) => ({
       groupNumber: index + 1,
       range: group.range,
       score: group.score,
+      minScore: group.minScore,
+      maxScore: group.maxScore,
+      dayScoreKeys: group.dayScoreKeys,
     }))
+
+  const groups: ConsecutiveGroup[] = []
+  const groupByDayScore = new Map<string, ConsecutiveGroup>()
+
+  for (const group of groupsWithKeys) {
+    const { dayScoreKeys, ...groupWithoutKeys } = group
+    groups.push(groupWithoutKeys)
+
+    for (const dayScoreKey of dayScoreKeys) {
+      groupByDayScore.set(dayScoreKey, groupWithoutKeys)
+    }
+  }
+
+  return { groups, groupByDayScore }
 }
 
 function formatConsecutiveRange(range: ConsecutiveRange): string {
@@ -187,6 +275,33 @@ function getParticipantInitial(fullName: string): string {
   return normalized.charAt(0).toUpperCase() || "?"
 }
 
+function compareQuickReadEntriesByDate(entryA: QuickReadEntry, entryB: QuickReadEntry): number {
+  const timestampA = getPollOptionTimestamp(entryA.item.option.value)
+  const timestampB = getPollOptionTimestamp(entryB.item.option.value)
+  const isTimestampAValid = !Number.isNaN(timestampA)
+  const isTimestampBValid = !Number.isNaN(timestampB)
+
+  if (isTimestampAValid && isTimestampBValid && timestampA !== timestampB) {
+    return timestampA - timestampB
+  }
+
+  if (isTimestampAValid !== isTimestampBValid) {
+    return isTimestampAValid ? -1 : 1
+  }
+
+  const dayKeyA = getLocalDayKey(entryA.item.option.value)
+  const dayKeyB = getLocalDayKey(entryB.item.option.value)
+  if (dayKeyA !== null && dayKeyB !== null && dayKeyA !== dayKeyB) {
+    return dayKeyA - dayKeyB
+  }
+
+  if (dayKeyA !== null || dayKeyB !== null) {
+    return dayKeyA !== null ? -1 : 1
+  }
+
+  return entryA.rank - entryB.rank
+}
+
 type RemoveVoteState = {
   participantId: string
   participantName: string
@@ -199,7 +314,6 @@ type ExportTable = {
 }
 
 const QUICK_READ_DEFAULT_GROUP_COUNT = 5
-const QUICK_READ_GROUP_PRESET_VALUES = [1, 3, 5] as const
 
 function sanitizeFileNamePart(value: string): string {
   const normalized = value
@@ -442,6 +556,10 @@ export function PollResultsView({
   const [isRemovingVote, setIsRemovingVote] = useState(false)
   const [removeVoteError, setRemoveVoteError] = useState<string | null>(null)
   const [quickReadGroupCount, setQuickReadGroupCount] = useState(QUICK_READ_DEFAULT_GROUP_COUNT)
+  const [insightsGroupingMode, setInsightsGroupingMode] = useState<InsightsGroupingMode>("strict")
+  const [connectedScoreTolerance, setConnectedScoreTolerance] = useState(
+    DEFAULT_CONNECTED_INSIGHTS_SCORE_TOLERANCE
+  )
   const [participantQuery, setParticipantQuery] = useState("")
   const [isParticipantColumnCollapsed, setIsParticipantColumnCollapsed] = useState(false)
 
@@ -501,21 +619,13 @@ export function PollResultsView({
 
     return values.sort((a, b) => a.dayKey - b.dayKey || b.score - a.score)
   }, [sortedOptions])
-  const consecutiveGroups = useMemo<ConsecutiveGroup[]>(
-    () => toConsecutiveScoreGroups(dayScores),
-    [dayScores]
+  const insightsScoreTolerance =
+    insightsGroupingMode === "connected" ? connectedScoreTolerance : 0
+  const consecutiveGrouping = useMemo<ConsecutiveGroupingResult>(
+    () => toConsecutiveScoreGroups(dayScores, insightsScoreTolerance),
+    [dayScores, insightsScoreTolerance]
   )
-  const consecutiveGroupByDayScore = useMemo(() => {
-    const dayScoreToGroup = new Map<string, ConsecutiveGroup>()
-
-    for (const group of consecutiveGroups) {
-      for (let day = group.range.startDay; day <= group.range.endDay; day += DAY_IN_MS) {
-        dayScoreToGroup.set(`${day}:${group.score}`, group)
-      }
-    }
-
-    return dayScoreToGroup
-  }, [consecutiveGroups])
+  const consecutiveGroupByDayScore = consecutiveGrouping.groupByDayScore
   const allQuickReadGroups = useMemo<QuickReadGroupBucket[]>(() => {
     const entries: QuickReadEntry[] = rankedOptions.map((item, index) => ({
       rank: index + 1,
@@ -544,9 +654,16 @@ export function PollResultsView({
       })
     }
 
-    return Array.from(groupedEntries.values()).sort(
-      (groupA, groupB) => groupA.entries[0].rank - groupB.entries[0].rank
-    )
+    const groups = Array.from(groupedEntries.values()).map((groupedEntry) => ({
+      ...groupedEntry,
+      entries: [...groupedEntry.entries].sort(compareQuickReadEntriesByDate),
+    }))
+
+    return groups.sort((groupA, groupB) => {
+      const bestRankA = groupA.entries.reduce((bestRank, entry) => Math.min(bestRank, entry.rank), Infinity)
+      const bestRankB = groupB.entries.reduce((bestRank, entry) => Math.min(bestRank, entry.rank), Infinity)
+      return bestRankA - bestRankB
+    })
   }, [consecutiveGroupByDayScore, rankedOptions])
   const quickReadMaxGroupCount = allQuickReadGroups.length > 0 ? allQuickReadGroups.length : 1
   const quickReadGroupValue =
@@ -643,15 +760,21 @@ export function PollResultsView({
     setQuickReadGroupCount(nextValue)
   }
 
-  function handleQuickReadGroupSliderChange(rawValue: string) {
+  function handleQuickReadGroupCountInputChange(rawValue: string) {
     const parsedValue = Number.parseInt(rawValue, 10)
     if (Number.isNaN(parsedValue)) return
     updateQuickReadGroupCount(parsedValue)
   }
 
-  function handleQuickReadGroupStep(direction: "less" | "more") {
-    const nextCount = direction === "less" ? quickReadGroupValue - 1 : quickReadGroupValue + 1
-    updateQuickReadGroupCount(nextCount)
+  function handleConnectedScoreToleranceChange(rawValue: string) {
+    const parsedValue = Number.parseInt(rawValue, 10)
+    if (Number.isNaN(parsedValue)) return
+
+    const nextTolerance = Math.min(
+      Math.max(Math.floor(parsedValue), 0),
+      MAX_CONNECTED_INSIGHTS_SCORE_TOLERANCE
+    )
+    setConnectedScoreTolerance(nextTolerance)
   }
 
   async function confirmRemoveVotes() {
@@ -819,93 +942,92 @@ export function PollResultsView({
             </div>
           </CardHeader>
           <CardContent className="space-y-2.5 pt-4">
-            <div className="space-y-2 rounded-xl border bg-gradient-to-br from-background via-muted/25 to-background p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="space-y-0.5">
-                  <p className="text-xs font-semibold tracking-wide uppercase">Quick read groups</p>
-                  <p className="text-muted-foreground text-[11px]">
-                    How many top groups should be highlighted.
+            <div className="rounded-xl border bg-gradient-to-br from-background via-muted/25 to-background p-3">
+              <div className="space-y-2">
+                <section className="space-y-2 rounded-lg border bg-background/70 p-2">
+                  <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+                    Grouping
                   </p>
-                </div>
-                <Badge variant="secondary" className="text-[11px]">
-                  {allQuickReadGroups.length === 0 ? (
-                    "0 / 0"
-                  ) : (
-                    <>
-                      <AnimatedCount value={quickReadGroupValue} /> /{" "}
-                      <AnimatedCount value={allQuickReadGroups.length} />
-                    </>
-                  )}
-                </Badge>
-              </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={insightsGroupingMode === "strict" ? "default" : "outline"}
+                      className="h-7 min-w-0 px-2 text-[11px]"
+                      onClick={() => setInsightsGroupingMode("strict")}
+                    >
+                      Strict
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={insightsGroupingMode === "connected" ? "default" : "outline"}
+                      className="h-7 min-w-0 px-2 text-[11px]"
+                      onClick={() => setInsightsGroupingMode("connected")}
+                    >
+                      Connected
+                    </Button>
+                  </div>
+                  {insightsGroupingMode === "connected" ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <label
+                        htmlFor="connected-score-tolerance"
+                        className="text-muted-foreground min-w-0 text-[11px] font-medium"
+                      >
+                        Tolerance (+/-)
+                      </label>
+                      <Input
+                        id="connected-score-tolerance"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={MAX_CONNECTED_INSIGHTS_SCORE_TOLERANCE}
+                        step={1}
+                        value={connectedScoreTolerance}
+                        onChange={(event) => handleConnectedScoreToleranceChange(event.target.value)}
+                        className="h-7 w-16 shrink-0 px-2 text-center text-[11px]"
+                      />
+                    </div>
+                  ) : null}
+                </section>
 
-              <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr gap-1.5">
-                {QUICK_READ_GROUP_PRESET_VALUES.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={quickReadGroupValue === value ? "default" : "outline"}
-                    className="h-7 w-full min-w-0 px-2 text-[11px]"
-                    aria-label={`Show top ${value} ${value === 1 ? "group" : "groups"}`}
-                    disabled={allQuickReadGroups.length === 0 || value > allQuickReadGroups.length}
-                    onClick={() => updateQuickReadGroupCount(value)}
-                  >
-                    Top {value}
-                  </Button>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={
-                    allQuickReadGroups.length > 0 && quickReadGroupValue === allQuickReadGroups.length
-                      ? "default"
-                      : "outline"
-                  }
-                  className="h-7 w-full min-w-0 px-2 text-[11px]"
-                  disabled={allQuickReadGroups.length === 0}
-                  onClick={() => updateQuickReadGroupCount(allQuickReadGroups.length)}
-                >
-                  All
-                </Button>
-              </div>
-
-              <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 min-w-12 px-2 text-[11px] whitespace-nowrap"
-                  disabled={allQuickReadGroups.length === 0 || quickReadGroupValue <= 1}
-                  onClick={() => handleQuickReadGroupStep("less")}
-                >
-                  Less
-                </Button>
-                <label htmlFor="quick-read-group-slider" className="sr-only">
-                  Number of quick read groups
-                </label>
-                <input
-                  id="quick-read-group-slider"
-                  type="range"
-                  min={1}
-                  max={quickReadMaxGroupCount}
-                  value={quickReadGroupValue}
-                  disabled={allQuickReadGroups.length === 0}
-                  onChange={(event) => handleQuickReadGroupSliderChange(event.target.value)}
-                  className="accent-primary h-1.5 w-full min-w-0 cursor-pointer disabled:cursor-not-allowed"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 min-w-12 px-2 text-[11px] whitespace-nowrap"
-                  disabled={
-                    allQuickReadGroups.length === 0 || quickReadGroupValue >= quickReadMaxGroupCount
-                  }
-                  onClick={() => handleQuickReadGroupStep("more")}
-                >
-                  More
-                </Button>
+                <section className="space-y-2 rounded-lg border bg-background/70 p-2">
+                  <p className="text-muted-foreground text-[11px] font-semibold tracking-wide uppercase">
+                    Quick read
+                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor="quick-read-group-count"
+                      className="text-muted-foreground min-w-0 text-[11px] font-medium"
+                    >
+                      Groups
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="quick-read-group-count"
+                        type="number"
+                        inputMode="numeric"
+                        min={allQuickReadGroups.length === 0 ? 0 : 1}
+                        max={quickReadMaxGroupCount}
+                        step={1}
+                        value={quickReadGroupValue}
+                        disabled={allQuickReadGroups.length === 0}
+                        onChange={(event) => handleQuickReadGroupCountInputChange(event.target.value)}
+                        className="h-7 w-16 shrink-0 px-2 text-center text-[11px]"
+                      />
+                      <Badge variant="secondary" className="h-7 shrink-0 px-2 text-[11px] whitespace-nowrap">
+                        {allQuickReadGroups.length === 0 ? (
+                          "0/0"
+                        ) : (
+                          <>
+                            <AnimatedCount value={quickReadGroupValue} />/
+                            <AnimatedCount value={allQuickReadGroups.length} />
+                          </>
+                        )}
+                      </Badge>
+                    </div>
+                  </div>
+                </section>
               </div>
             </div>
 
@@ -931,7 +1053,20 @@ export function PollResultsView({
                         }
                         className="h-5 px-1.5 text-[10px]"
                       >
-                        Score <AnimatedCount value={groupedOptions.group.score} />
+                        {groupedOptions.group.minScore === groupedOptions.group.maxScore ? (
+                          <>
+                            Score <AnimatedCount value={groupedOptions.group.score} />
+                          </>
+                        ) : (
+                          <>
+                            Scores <AnimatedCount value={groupedOptions.group.minScore} />-
+                            <AnimatedCount value={groupedOptions.group.maxScore} />
+                          </>
+                        )}
+                      </Badge>
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                        Length <AnimatedCount value={groupedOptions.group.range.count} />{" "}
+                        {groupedOptions.group.range.count === 1 ? "day" : "days"}
                       </Badge>
                       <span className="truncate">{formatConsecutiveRange(groupedOptions.group.range)}</span>
                     </div>
